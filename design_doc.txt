@@ -1,0 +1,21 @@
+[Discord Bot]
+  sends game link -> https://yourgame.com/play
+
+[User Browser]
+  visits link -> redirected to Discord login (OAuth2)
+
+[Discord OAuth2]
+  user approves -> sends auth code to your backend
+
+[Backend Server]: Flask
+  exchanges code for Discord access token
+  gets user's Discord ID & username
+  creates/stores session or JWT
+  redirects user to /game with session/token
+
+[Frontend Game]
+  loads game page -> requests /api/score with token
+  backend verifies token, returns score
+
+[Database]: Postgresql
+  stores user_id, username, scores

@@ -1,1 +1,7 @@
-bot/token.txt
+venv/
+
+__pycache__/
+*.pyc
+
+discord_games/bot/token.txt
+discord_games.egg-info/
