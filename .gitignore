@@ -4,5 +4,6 @@ __pycache__/
 *.pyc
 
 discord_games/bot/token.txt
+discord_games/games/simon_gpt.py
 
 discord_games.egg-info/

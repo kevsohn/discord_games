@@ -1,32 +1,40 @@
-from flask import Flask, request, render_template, redirect, url_for
-from games import simon
-import secrets
+from flask import Flask, session, request, render_template, redirect, url_for
+from flask_session import Session
+from secrets import token_urlsafe
+from games.simon import simon_bp
 
+# can only have 1 app instance, which necessitates Blueprints
+# to keep things modular and organized
 app = Flask(__name__)
+# remember to incl url prefix in the JS fetches
+app.register_blueprint(simon_bp, url_prefix='/simon')
 
-# arg is URL path and you define it server-side and match in browser with html id
+app.secret_key = token_urlsafe(16)  # used by sesh to sign cookies
+app.config['SESSION_TYPE'] = 'filesystem' # opt: filesystem, mongodb, redis, memcached, sqlalchemy
+Session(app)  # creates a session instance to keep track of vars local to each sesh
+
+# arg: URL path the client-side calls to perform said action
 @app.route('/')
 def home():
-    return render_template('main.html')
+    return render_template('home.html')
 
-# methods arg defines the allowed HTTP requests from the browser to respond to
-# expect POST or GET?
-# GET has params in url, POST sends through body, both can be seen if not HTTPS
-@app.route('/game_dir', methods=['POST'])
-def redirect_to_game():
-    game = request.form.get('game')
-    # the 1st arg in url_for specifies func name and gets the assoc url
-    return redirect(url_for('play', game))
+# methods: allowed HTTP requests from client
+# GET contains data in the url (i.e. ?param1=data1&param2=data2)
+# POST sends data through body
+# both can be seen if not using HTTPS
+@app.route('/get_game', methods=['GET'])
+def get_game():
+    game = request.args.get('game')
+    return redirect(url_for('play', game=game))
 
-@app.route('games/<game>')
+# arg: <__param__> in the url is a must
+# otherwise, param isnt captured
+@app.route('/play/<game>')
 def play(game):
-    if game == 'simon_says':
-        # now expects async funcs so should this be await?
-        # i think simon just takes over
-        simon.start()
+    if game == 'simon':
         return render_template('simon.html')
-    #elif game == 'minesweeper':
-    #    minesweeper.start()
+    elif game == 'minesweeper':
+        return render_template('minesweeper.html')
     else:
         return 'Game not found!', 404
 
