@@ -1,9 +1,7 @@
 venv/
-
 __pycache__/
 *.pyc
-
-discord_games/bot/token.txt
-discord_games/games/simon_gpt.py
-
+flask_session/
 discord_games.egg-info/
+discord_games/bot/token.txt
+
