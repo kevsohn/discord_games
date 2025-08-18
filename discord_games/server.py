@@ -8,10 +8,12 @@ from games.simon import simon_bp
 app = Flask(__name__)
 # remember to incl url prefix in the JS fetches
 app.register_blueprint(simon_bp, url_prefix='/simon')
-
-app.secret_key = token_urlsafe(16)  # used by sesh to sign cookies
-app.config['SESSION_TYPE'] = 'filesystem' # opt: filesystem, mongodb, redis, memcached, sqlalchemy
-Session(app)  # creates a session instance to keep track of vars local to each sesh
+# used to sign cookies
+app.secret_key = token_urlsafe(16)
+# opts: filesystem, redis, memcached, mongodb, sqlalchemy
+app.config['SESSION_TYPE'] = 'filesystem'
+# sessions group data local to each user
+Session(app)
 
 # arg: URL path the client-side calls to perform said action
 @app.route('/')
