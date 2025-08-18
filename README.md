@@ -10,20 +10,33 @@ Postgresql (psycopg2):
     
     Start:
         brew services start postgresql    
+        pg_isready -h localhost -p 5432  -> to check if accepting connections
     
-    Create DB + User:
-        sudo -i -u postgres
-        psql
+    Create DB:
+        psql -U $(whoami) -h localhost -d postgres
         
-        CREATE DATABASE <db;
+        CREATE DATABASE <db>;
+        \q
+        
+        psql -U $(whoami) -h localhost -d <db>
+
+    List All DBs:
+        \l
+
+    Check All Tables:
+        \c <db>     -> to make sure we're in the right db
+        \dt         -> list tables
+        \d <table>  -> inspect table
+
+    Create User (optional):
         CREATE USER <user> WITH PASSWORD '<pwd>';
         GRANT ALL PRIVILEGES ON DATABASE <db> TO <user>;
+        \q
 
         psql -U <user> -d <db> -h localhost -W
 
-    Check Location of Data:
-        sudo -i -u postgres
-        psql
+    Check Data Storage Location:
+        psql -U $(whoami) -h localhost -d postgres
         
         SHOW data_directory;
 
