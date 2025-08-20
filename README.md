@@ -1,6 +1,11 @@
+Activate Virtual Env:
+
+source <venv>/bin/activate
+
+
 Discord Bot: 
     
-    python3 discord_games/bot/main.py
+    python3 discord_games/bot.py
 
 Backend Server (Flask): 
     

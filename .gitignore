@@ -1,7 +1,6 @@
 venv/
 __pycache__/
 *.pyc
+*.egg-info/
+.env
 flask_session/
-discord_games.egg-info/
-discord_games/bot/token.txt
-discord_games/config.txt
