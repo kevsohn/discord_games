@@ -54,7 +54,10 @@ with app.app_context():
 # redirects straight to discord OAuth2
 @app.route('/login')
 def login():
+    # encoded cuz it just be like that
     encoded_url = quote(app.config['REDIR_URI'], safe="")
+    # scope: whatever perms selected on the dev website
+    # prompt: none/consent, where none doesn't keep asking for auth once auth'd
     return redirect("https://discord.com/oauth2/authorize"
                     f"?client_id={app.config['CLIENT_ID']}"
                     "&response_type=code"
@@ -93,11 +96,33 @@ def auth():
     r.raise_for_status()
     r = r.json()
 
-    session['access_token'] = r.get('access_token')
-    session['refresh_token'] = r.get('refresh_token')
-    #session['expires_at'] = now + r.get('expires_in')
-    #if session['expires_at'] == now:
-    #    r = refresh_token(session['refresh_token'])
+    access_token = r.get('access_token')
+    refresh_token = r.get('refresh_token')
+    expires_at = r.get('expires_at')
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    r = requests.get(f"{app.config['API_ENDPOINT']}/users/@me",
+                     headers=headers
+    )
+    r.raise_for_status()
+    r = r.json()
+
+    session['discord_id'] = r.get('id')
+    session['discord_username'] = r.get('username')
+    print('id:', r.get('id'), ' user:', r.get('username'))
+
+    #conn = db.get_conn()
+    #with conn.cursor(cursor_factory=RealDictCursor) as cur:
+    #    cur.execute("""
+    #        insert access_token if not exists user_id;
+    #        insert refresh_token if not exists;
+    #        insert datetime(expires_at) if not exists;
+    #    """)
+    #    row = cur.fetchone()
+    # if row['expires_at'] == datetime.now():
+    #   refresh_token(refresh_token)
+    #    conn.commit()
+
     return redirect(url_for('home'))
 
 
