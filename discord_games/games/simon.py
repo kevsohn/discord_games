@@ -1,5 +1,7 @@
 from flask import Blueprint, session, request, jsonify
+from psycopg2.extras import RealDictCursor, DictCursor
 from random import choice
+import db
 
 # Blueprints make it modular by being indep of the homepage
 simon_bp = Blueprint('simon', __name__)
@@ -7,14 +9,25 @@ simon_bp = Blueprint('simon', __name__)
 # game params
 max_seq = 20
 colours = ["r", "g", "b", "o"]
-high_score = 0  # all time highscore
-# db.store(seq)  # all players are given the same sequence
+
+"""
+# need to init player_id first
+conn = db.get_conn()
+with conn.get_cursor(cursor_factory=DictCursor) as cur:
+    cur.execute("select high_score from players where id = %s", (session['user_id'],))
+    row = cur.fetchone()
+    if row:
+        high_score = row['high_score']
+db.close_conn()
+"""
+high_score = 0
+
 
 # --------------- helper ------------------
 # session vars is local to each user sesh but acts like a global var
 def reset_state():
-    session['sequence'] = [choice(colours) for i in range(max_seq)]
-    #highscore = f"select high_score from stats where user_id = {user_id}"
+    # db.store(seq)  # all players are given the same sequence
+    session['sequence'] = [choice(colours) for _ in range(max_seq)]
     session['score'] = 0
     session['turn_num'] = 0
 
