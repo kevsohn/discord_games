@@ -49,6 +49,7 @@ def get_sequence():
     score = session.get('score', 0)
     return jsonify(sequence=seq[:score+1])
 
+
 # state change driver
 @simon_bp.route('/verify', methods=['POST'])
 def verify_choice():

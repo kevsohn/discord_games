@@ -19,13 +19,11 @@ async def on_message(message):
         return
 
     if message.content.lower().startswith('!simon'):
-        #user_id = message.author.id
         embed = discord.Embed(title="🎮 Simon Says...",
                               description="Click the link below to start:",
                               color=0x00ff00)
         embed.add_field(name="Game Link",
-                        #value="[Play Now](https://127.0.0.1:500/login?token={user_token})",
-                        value="[Play Now](http://127.0.0.1:5000)",
+                        value=f"[Play Now]({config.BASE_URL}/login)",
                         inline=False)
         await message.reply(embed=embed)
 

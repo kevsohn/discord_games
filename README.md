@@ -1,8 +1,3 @@
-Activate Virtual Env:
-
-source <venv>/bin/activate
-
-
 Discord Bot: 
     
     python3 discord_games/bot.py
@@ -38,7 +33,7 @@ Postgresql (psycopg2):
         GRANT ALL PRIVILEGES ON DATABASE <db> TO <user>;
         \q
 
-        psql -U <user> -d <db> -h localhost -W
+        psql -U <user> -d <db> -h localhost
 
     Check Data Storage Location:
         psql -U $(whoami) -h localhost -d postgres
