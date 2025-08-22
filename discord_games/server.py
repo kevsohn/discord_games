@@ -92,9 +92,9 @@ def auth():
 
     # getting discord id and username
     r = get_user_deets(access_t)
-    #session['id'] = r.get('id')
-    #session['username'] = r.get('username')
-    store_tokens(r.get('id'), access_t, refresh_t, expires_at)
+    session['id'] = r.get('id')
+    session['username'] = r.get('username')
+    store_tokens(session['id'], access_t, refresh_t, expires_at)
 
     #store deets
     with conn.cursor() as cur:
@@ -221,6 +221,16 @@ def home():
 @app.route('/play/<game>', methods=['GET'])
 def play(game):
     if game == 'simon':
+        conn = db.get_conn()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                select highscore from players
+                where id = %s;
+            """, (session['id'],))
+            row = cur.fetchone()
+            if row is None:
+                return "User not found", 400
+            session['highscore'] = row.get('highscore')
         return render_template('simon.html')
     elif game == 'minesweeper':
         return render_template('minesweeper.html')
