@@ -30,5 +30,8 @@ async def on_message(message):
 #how do I know if the session has ended with a user?
 #log everyone's user_id if they press play
 #ping everyone after 24hrs from the first "play" announcing winners and asking to play now
+#async def get_leaderboard():
+    #current_app or session or db?
+    #from flask import session, current_app
 
 client.run(config.BOT_TOKEN)

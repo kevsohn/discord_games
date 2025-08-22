@@ -1,11 +1,12 @@
+import time
 import requests
 from urllib.parse import quote
 
 from flask import Flask, session, request, render_template, redirect, url_for
 from flask_session import Session
 
-from psycopg2.extras import DictCursor, RealDictCursor
 import db
+from psycopg2.extras import DictCursor, RealDictCursor
 
 from games.simon import simon_bp
 
@@ -31,20 +32,25 @@ with app.app_context():
         conn = db.get_conn()
         # DictCursor is faster that RealDictCursor but doesnt return a python dict
         with conn.cursor(cursor_factory=DictCursor) as cur:
-            # remove this at some point
-            cur.execute("DROP TABLE session_info; DROP TABLE players;")
+            cur.execute("drop table tokens; drop table sessions; drop table players;")
             cur.execute("""
-            CREATE TABLE IF NOT EXISTS players (
-                id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-                discord_id TEXT UNIQUE NOT NULL,
-                high_score INT DEFAULT 0
+            CREATE TABLE tokens (
+                id BIGINT PRIMARY KEY,
+                access_t TEXT UNIQUE NOT NULL,
+                refresh_t TEXT UNIQUE NOT NULL,
+                expires_at BIGINT NOT NULL
             );
-            CREATE TABLE IF NOT EXISTS session_info (
+            CREATE TABLE players (
+                id BIGINT PRIMARY KEY,
+                username TEXT NOT NULL,
+                highscore INT DEFAULT 0
+            );
+            CREATE TABLE sessions (
                 id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-                player_id INT REFERENCES players(id),
+                player_id BIGINT REFERENCES players(id),
                 score INT DEFAULT 0,
                 played_at TIMESTAMP DEFAULT NOW()
-             )
+             );
             """)
             conn.commit()
     finally:
@@ -76,10 +82,106 @@ def auth():
     # could have more args so cant use /auth/<code>
     code = request.args.get('code')
     if not code:
-        return "Error: No code from Discord", 400
+        return "Error: No code in given by Discord", 400
 
+    # get tokens to access user's deets on their behalf
+    r = exchange_code(code)
+    access_t = r.get('access_token')
+    refresh_t = r.get('refresh_token')
+    expires_at = r.get('expires_in') + int(time.time())
+
+    # getting discord id and username
+    r = get_user_deets(access_t)
+    #session['id'] = r.get('id')
+    #session['username'] = r.get('username')
+    store_tokens(r.get('id'), access_t, refresh_t, expires_at)
+
+    #store deets
+    with conn.cursor() as cur:
+        cur.execute("""
+            insert into players (id, username)
+            values (%s, %s)
+            on conflict (id) do update
+            set username = excluded.username
+        """, (r.get('id'), r.get('username')))
+        conn.commit()
+
+    return redirect(url_for('home'))
+
+
+def store_tokens(id, access_t, refresh_t, expires_at):
+    conn = db.get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO tokens (id, access_t, refresh_t, expires_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET access_t = EXCLUDED.access_t,
+                    refresh_t = EXCLUDED.refresh_t,
+                    expires_at = EXCLUDED.expires_at;
+            """, (id, access_t, refresh_t, expires_at))
+            conn.commit()
+    finally:
+        db.close_conn()
+
+
+def get_access_token(id):
+    conn = db.get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                select access_t, refresh_t, expires_at from tokens
+                where id = %s;
+            """, (id,))
+            row = cur.fetchone()
+
+            if row is None:
+                return "Discord user not found", 400
+            if row['expires_at'] <= int(time.time())-60:
+                r = refresh_token(row['refresh_t'])
+                access_t = r.get('access_token')
+                refresh_t = r.get('refresh_token')
+                expires_at = r.get('expires_in') + int(time.time())
+                store_tokens(id, access_t, refresh_t, expires_at)
+                return access_t
+            else:
+                return row['access_t']
+    finally:
+        db.close_conn()
+
+
+"""
+return:
+{
+    id: ...
+    username: ...
+    discriminator: digit that differentiations users w/ same username
+    ...
+}
+"""
+def get_user_deets(access_token):
+    headers = {"Authorization": f"Bearer {access_token}"}
+    r = requests.get(f"{app.config['API_ENDPOINT']}/users/@me",
+                     headers=headers
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+"""
+return:
+{
+    access_token: ...
+    token_type: 'Bearer'
+    expires_in: 604800  #secs (7 days)
+    refresh_token: ...
+    scope: 'identify'
+}
+"""
+def exchange_code(code):
     # redirect_uri needs to match exactly with the one in the dev page
-    # url will get encoded since sending thru body
+    # url will get encoded since sending thru body as data
     data = {'grant_type': 'authorization_code',
             'code': code,
             'redirect_uri': app.config['REDIR_URI']
@@ -90,45 +192,14 @@ def auth():
                       headers=headers,
                       auth=(app.config['CLIENT_ID'], app.config['CLIENT_SECRET'])
     )
-    #print("status", r.status_code)
-    #print("headers", r.headers)
-    #print("body", r.text[:500])
     r.raise_for_status()
-    r = r.json()
-
-    access_token = r.get('access_token')
-    refresh_token = r.get('refresh_token')
-    expires_at = r.get('expires_at')
-
-    headers = {"Authorization": f"Bearer {access_token}"}
-    r = requests.get(f"{app.config['API_ENDPOINT']}/users/@me",
-                     headers=headers
-    )
-    r.raise_for_status()
-    r = r.json()
-
-    session['discord_id'] = r.get('id')
-    session['discord_username'] = r.get('username')
-    print('id:', r.get('id'), ' user:', r.get('username'))
-
-    #conn = db.get_conn()
-    #with conn.cursor(cursor_factory=RealDictCursor) as cur:
-    #    cur.execute("""
-    #        insert access_token if not exists user_id;
-    #        insert refresh_token if not exists;
-    #        insert datetime(expires_at) if not exists;
-    #    """)
-    #    row = cur.fetchone()
-    # if row['expires_at'] == datetime.now():
-    #   refresh_token(refresh_token)
-    #    conn.commit()
-
-    return redirect(url_for('home'))
+    return r.json()
 
 
-def refresh_token(refresh_token):
+# return: identical to exchange_code()
+def refresh_token(refresh_t):
     data = {'grant_type': 'refresh_token',
-            'refresh_token': refresh_token
+            'refresh_token': refresh_t
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     r = requests.post(f'{app.config['API_ENDPOINT']}/oauth2/token',
