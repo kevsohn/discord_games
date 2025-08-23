@@ -32,25 +32,29 @@ with app.app_context():
         conn = db.get_conn()
         # DictCursor is faster that RealDictCursor but doesnt return a python dict
         with conn.cursor(cursor_factory=DictCursor) as cur:
-            cur.execute("drop table tokens; drop table sessions; drop table players;")
             cur.execute("""
-            CREATE TABLE tokens (
-                id BIGINT PRIMARY KEY,
-                access_t TEXT UNIQUE NOT NULL,
-                refresh_t TEXT UNIQUE NOT NULL,
-                expires_at BIGINT NOT NULL
-            );
-            CREATE TABLE players (
-                id BIGINT PRIMARY KEY,
-                username TEXT NOT NULL,
-                highscore INT DEFAULT 0
-            );
-            CREATE TABLE sessions (
-                id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-                player_id BIGINT REFERENCES players(id),
-                score INT DEFAULT 0,
-                played_at TIMESTAMP DEFAULT NOW()
-             );
+                drop table if exists tokens;
+                drop table if exists sessions;
+                drop table if exists players;
+            """)
+            cur.execute("""
+                CREATE TABLE tokens (
+                    id BIGINT PRIMARY KEY,
+                    access_t TEXT UNIQUE NOT NULL,
+                    refresh_t TEXT UNIQUE NOT NULL,
+                    expires_at BIGINT NOT NULL
+                );
+                CREATE TABLE players (
+                    id BIGINT PRIMARY KEY,
+                    username TEXT NOT NULL,
+                    highscore INT DEFAULT 0
+                );
+                CREATE TABLE sessions (
+                    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+                    player_id BIGINT REFERENCES players(id),
+                    score INT DEFAULT 0,
+                    played_at TIMESTAMP DEFAULT NOW()
+                 );
             """)
             conn.commit()
     finally:
@@ -79,18 +83,20 @@ def login():
 # both can be seen if not using HTTPS
 @app.route('/auth', methods=['GET'])
 def auth():
+    session.clear()
     # could have more args so cant use /auth/<code>
     code = request.args.get('code')
     if not code:
         return "Error: No code in given by Discord", 400
 
-    # get tokens to access user's deets on their behalf
+    # gets an access token to get user deets
     r = exchange_code(code)
     access_t = r.get('access_token')
+    # access tokens expire so refresh tokens are used to get a new one
     refresh_t = r.get('refresh_token')
+    # expires_in is given in secs so add now in secs
     expires_at = r.get('expires_in') + int(time.time())
 
-    # getting discord id and username
     r = get_user_deets(access_t)
     session['id'] = r.get('id')
     session['username'] = r.get('username')
@@ -98,6 +104,7 @@ def auth():
 
     #store deets
     with conn.cursor() as cur:
+        # prevents SQL injection this way
         cur.execute("""
             insert into players (id, username)
             values (%s, %s)
@@ -154,24 +161,6 @@ def get_access_token(id):
 """
 return:
 {
-    id: ...
-    username: ...
-    discriminator: digit that differentiations users w/ same username
-    ...
-}
-"""
-def get_user_deets(access_token):
-    headers = {"Authorization": f"Bearer {access_token}"}
-    r = requests.get(f"{app.config['API_ENDPOINT']}/users/@me",
-                     headers=headers
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-"""
-return:
-{
     access_token: ...
     token_type: 'Bearer'
     expires_in: 604800  #secs (7 days)
@@ -197,15 +186,33 @@ def exchange_code(code):
 
 
 # return: identical to exchange_code()
-def refresh_token(refresh_t):
+def refresh_token(refresh_token):
     data = {'grant_type': 'refresh_token',
-            'refresh_token': refresh_t
+            'refresh_token': refresh_token
     }
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
     r = requests.post(f'{app.config['API_ENDPOINT']}/oauth2/token',
                       data=data,
                       headers=headers,
                       auth=(app.config['CLIENT_ID'], app.config['CLIENT_SECRET'])
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+"""
+return:
+{
+    id: ...
+    username: ...
+    discriminator: digit that differentiations users w/ same username
+    ...
+}
+"""
+def get_user_deets(access_token):
+    headers = {"Authorization": f"Bearer {access_token}"}
+    r = requests.get(f"{app.config['API_ENDPOINT']}/users/@me",
+                     headers=headers
     )
     r.raise_for_status()
     return r.json()
@@ -221,16 +228,6 @@ def home():
 @app.route('/play/<game>', methods=['GET'])
 def play(game):
     if game == 'simon':
-        conn = db.get_conn()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                select highscore from players
-                where id = %s;
-            """, (session['id'],))
-            row = cur.fetchone()
-            if row is None:
-                return "User not found", 400
-            session['highscore'] = row.get('highscore')
         return render_template('simon.html')
     elif game == 'minesweeper':
         return render_template('minesweeper.html')
