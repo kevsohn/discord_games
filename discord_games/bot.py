@@ -1,5 +1,6 @@
-import config
+import requests
 import discord
+import config
 
 # need to allow matching intents on the bot admin page
 intents = discord.Intents.default()
@@ -27,11 +28,17 @@ async def on_message(message):
                         inline=False)
         await message.reply(embed=embed)
 
-#how do I know if the session has ended with a user?
-#log everyone's user_id if they press play
-#ping everyone after 24hrs from the first "play" announcing winners and asking to play now
-#async def get_leaderboard():
-    #current_app or session or db?
-    #from flask import session, current_app
+# ping everyone after 24hrs from the first "play" announcing winners and asking to play now
+# the first time the bot gets called into the server, set the announcement time 24h from this time
+# then, run a background job to check every hour if 24h passed, and announce leaders for the day
+# and reset time
+'''
+async def show_rankings():
+    get_rankings()
+    await message.send?()
+
+async def get_rankings():
+    r = requests.get(f"{config.BASE_URL}/api/rankings")
+'''
 
 client.run(config.BOT_TOKEN)

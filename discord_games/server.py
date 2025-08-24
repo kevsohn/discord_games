@@ -1,13 +1,14 @@
+# native
 import time
+from datetime import datetime, timezone, timedelta
 import requests
 from urllib.parse import quote
-
+# extra
 from flask import Flask, session, request, render_template, redirect, url_for
 from flask_session import Session
-
-import db
 from psycopg2.extras import DictCursor, RealDictCursor
-
+# mine
+import db
 from games.simon import simon_bp
 
 
@@ -34,29 +35,46 @@ with app.app_context():
         with conn.cursor(cursor_factory=DictCursor) as cur:
             cur.execute("""
                 drop table if exists tokens;
-                drop table if exists sessions;
+                drop table if exists scores;
                 drop table if exists players;
-            """)
+                drop table if exists reset_time;""")
+            # id: discord id
+            # expires_at: access_t expiry time in secs since unix epoch UTC
             cur.execute("""
-                CREATE TABLE tokens (
+                CREATE TABLE IF NOT EXISTS tokens (
                     id BIGINT PRIMARY KEY,
                     access_t TEXT UNIQUE NOT NULL,
                     refresh_t TEXT UNIQUE NOT NULL,
                     expires_at BIGINT NOT NULL
                 );
-                CREATE TABLE players (
+            """)
+            # id: discord id
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS players (
                     id BIGINT PRIMARY KEY,
-                    username TEXT NOT NULL,
-                    highscore INT DEFAULT 0
+                    username TEXT NOT NULL
                 );
-                CREATE TABLE sessions (
-                    id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+            """)
+            # game_id: i.e. 'simon', 'minesweeper', etc
+            # hscore: all time high score/game
+            # score: daily scores/game that reset every 24h
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scores (
                     player_id BIGINT REFERENCES players(id),
+                    game_id INT NOT NULL,
+                    hscore INT DEFAULT 0,
                     score INT DEFAULT 0,
-                    played_at TIMESTAMP DEFAULT NOW()
+                    PRIMARY KEY (player_id, game_id)
                  );
             """)
-            conn.commit()
+            # to track when the rankings should be announced
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS reset_time (
+                    id INT PRIMARY KEY DEFAULT 1,
+                    time TIMESTAMP NOT NULL
+                );
+            """)
+        conn.commit()
     finally:
         db.close_conn()
 
@@ -91,27 +109,28 @@ def auth():
 
     # gets an access token to get user deets
     r = exchange_code(code)
-    access_t = r.get('access_token')
+    access_t = r['access_token']
     # access tokens expire so refresh tokens are used to get a new one
-    refresh_t = r.get('refresh_token')
+    refresh_t = r['refresh_token']
     # expires_in is given in secs so add now in secs
-    expires_at = r.get('expires_in') + int(time.time())
+    expires_at = r['expires_in'] + int(time.time())
 
     r = get_user_deets(access_t)
-    session['id'] = r.get('id')
-    session['username'] = r.get('username')
-    store_tokens(session['id'], access_t, refresh_t, expires_at)
+    session['id'] = r['id']
+    session['username'] = r['username']
+    store_tokens(r['id'], access_t, refresh_t, expires_at)
 
-    #store deets
+    conn = db.get_conn()
     with conn.cursor() as cur:
+        # store deets
         # prevents SQL injection this way
         cur.execute("""
-            insert into players (id, username)
+            insert into players
             values (%s, %s)
             on conflict (id) do update
-            set username = excluded.username
-        """, (r.get('id'), r.get('username')))
-        conn.commit()
+            set username = excluded.username;
+        """, (r['id'], r['username']))
+    conn.commit()
 
     return redirect(url_for('home'))
 
@@ -121,14 +140,14 @@ def store_tokens(id, access_t, refresh_t, expires_at):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO tokens (id, access_t, refresh_t, expires_at)
+                INSERT INTO tokens
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (id) DO UPDATE
                 SET access_t = EXCLUDED.access_t,
                     refresh_t = EXCLUDED.refresh_t,
                     expires_at = EXCLUDED.expires_at;
             """, (id, access_t, refresh_t, expires_at))
-            conn.commit()
+        conn.commit()
     finally:
         db.close_conn()
 
@@ -142,15 +161,14 @@ def get_access_token(id):
                 where id = %s;
             """, (id,))
             row = cur.fetchone()
-
             if row is None:
                 return "Discord user not found", 400
-            if row['expires_at'] <= int(time.time())-60:
+            # if now has passed expire time - 60s
+            if row['expires_at'] - 60 <= int(time.time()):
                 r = refresh_token(row['refresh_t'])
-                access_t = r.get('access_token')
-                refresh_t = r.get('refresh_token')
-                expires_at = r.get('expires_in') + int(time.time())
-                store_tokens(id, access_t, refresh_t, expires_at)
+                access_t = r['access_token']
+                expires_at = r['expires_in'] + int(time.time())
+                store_tokens(id, access_t, r['refresh_token'], expires_at)
                 return access_t
             else:
                 return row['access_t']
@@ -218,6 +236,48 @@ def get_user_deets(access_token):
     return r.json()
 
 
+# discord bot has a background scheduler that pings every hour
+# once ping time == reset_time, send response
+@app.route('/api/rankings')
+def send_rankings():
+    # if db empty, insert reset time 24h from now
+    # else, get time
+    # if now != reset, return null state
+    # else return rankings
+    now = datetime.now(timezone.utc)
+    conn = db.get_conn()
+    with conn.cursor() as cur:
+        # UPSERT: insert reset time if not exists
+        cur.execute("""
+            insert into reset_time (id, time)
+            values (1, %s)
+            on conflict (id) do nothing
+        """, (now + timedelta(hours=24),))
+
+        # get cur reset_time
+        cur.execute("SELECT time FROM reset_time WHERE id = 1")
+        reset = cur.fetchone()[0]
+        if now < reset:
+            return jsonify(rankings=None)
+
+        # else return rankings
+        cur.execute("""
+            SELECT game_id, player_id, score
+            FROM scores
+            ORDER BY score DESC
+        """)
+        rows = cur.fetchall()
+        # update reset_time for next 24h
+        cur.execute("""
+            UPDATE reset_time
+            SET time = %s
+            WHERE id = 1";
+        """, (now + timedelta(hours=24),))
+    conn.commit()
+
+    return jsonify(rankings=rows)
+
+
 # game selection menu
 @app.route('/')
 def home():
@@ -227,14 +287,32 @@ def home():
 # <param> is required in the route to be captured
 @app.route('/play/<game>', methods=['GET'])
 def play(game):
+    conn = db.get_conn()
     if game == 'simon':
+        with conn.cursor() as cur:
+            cur.execute("""
+                insert into scores (player_id, game_id)
+                values (%s, %s)
+                on conflict (player_id, game_id) do nothing;
+            """, (session['id'], 1))
+        conn.commit()
         return render_template('simon.html')
+
     elif game == 'minesweeper':
         return render_template('minesweeper.html')
+        with conn.cursor() as cur:
+            cur.execute("""
+                insert into scores (player_id, game_id)
+                values (%s, %s)
+                on conflict (player_id, game_id) do nothing;
+            """, (session['id'], 2))
+        conn.commit()
+
     else:
         return 'Game not found!', 404
 
 
+#---------------- main ---------------------
 if __name__ == '__main__':
     try:
         # ssl_context makes the app run with HTTPS

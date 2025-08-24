@@ -14,7 +14,7 @@ colours = ["r", "g", "b", "o"]
 # --------------- helper ------------------
 def reset_state():
     session['sequence'] = [choice(colours) for _ in range(max_seq)]
-    session['score'] = 0
+    session['g1_score'] = 0
     session['turn_num'] = 0
 
 
@@ -28,22 +28,23 @@ def start():
     conn = db.get_conn()
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
-            select highscore from players
-            where id = %s;
+            select hscore from scores
+            where player_id = %s and game_id = 1
         """, (session['id'],))
         row = cur.fetchone()
         if row is None:
-            return "User not found", 400
-        session['highscore'] = row.get('highscore')
+            # client expects json so can't just return text
+            return jsonify(error="User not found"), 400
+        session['g1_hscore'] = row['hscore']
 
     reset_state()
-    return jsonify(highscore=session['highscore'])
+    return jsonify(highscore=session['g1_hscore'])
 
 
 @simon_bp.route('/sequence', methods=['POST'])
 def get_sequence():
-    seq = session.get('sequence', [])
-    score = session.get('score', 0)
+    seq = session['sequence']
+    score = session['g1_score']
     return jsonify(sequence=seq[:score+1])
 
 
@@ -54,30 +55,38 @@ def verify_choice():
     if colour not in colours:
         return jsonify(error='Unexpected choice'), 400
 
-    turn_num = session.get('turn_num')
-    score = session.get('score')
+    turn_num = session['turn_num']
+    score = session['g1_score']
     # if game over
-    if colour != session.get('sequence')[turn_num]:
-        highscore = session.get('highscore')
-        # only update db when new highscore
-        if score > highscore:
-            highscore = score
-            conn = db.get_conn()
+    if colour != session['sequence'][turn_num]:
+        conn = db.get_conn()
+        hscore = session['g1_hscore']
+        if score > hscore:
+            hscore = score
+            # store all time high score for this game
             with conn.cursor() as cur:
                 cur.execute("""
-                    update players
-                    set highscore = %s
-                    where id = %s;
-                """, (highscore, session['id']))
-                conn.commit()
-        return jsonify(status='game_over', highscore=highscore, final=score)
+                    update scores
+                    set hscore = %s
+                    where player_id = %s and game_id = 1;
+                """, (hscore, session['id']))
+            conn.commit()
+        # store daily score
+        with conn.cursor() as cur:
+            cur.execute("""
+                update scores
+                set score = %s
+                where player_id = %s and game_id = 1;
+            """, (score, session['id']))
+        conn.commit()
+        return jsonify(status='game_over', highscore=hscore, final=score)
 
     turn_num += 1
     # if last correct turn
     # better than turn_num > score if they somehow get out of sync
     if turn_num == score+1:
         session['turn_num'] = 0
-        session['score'] = turn_num
+        session['g1_score'] = turn_num
         return jsonify(status='continue', score=turn_num)
 
     # else goto next turn in seq
