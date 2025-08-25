@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 import requests
 from urllib.parse import quote
 # extra
-from flask import Flask, session, request, render_template, redirect, url_for
+from flask import Flask, session, request, render_template, redirect, url_for, jsonify
 from flask_session import Session
 from psycopg2.extras import DictCursor, RealDictCursor
 # mine
@@ -39,7 +39,8 @@ with app.app_context():
                 drop table if exists tokens;
                 drop table if exists scores;
                 drop table if exists players;
-                drop table if exists reset_time;""")
+                drop table if exists reset_time;
+            """)
             # id: discord id
             # expires_at: access_t expiry time in secs since unix epoch UTC
             cur.execute("""
@@ -73,7 +74,7 @@ with app.app_context():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS reset_time (
                     id INT PRIMARY KEY DEFAULT 1,
-                    time TIMESTAMP NOT NULL
+                    time TIMESTAMPTZ
                 );
             """)
         conn.commit()
@@ -284,42 +285,38 @@ def init_scores_db(id, game):
 # once ping time == reset_time, send response
 @app.route('/api/rankings')
 def send_rankings():
-    # if db empty, insert reset time 24h from now
-    # else, get time
-    # if now != reset, return null state
-    # else return rankings
     now = datetime.now(timezone.utc)
     conn = db.get_conn()
     with conn.cursor() as cur:
-        # UPSERT: insert reset time if not exists
+        # UPSERT: if db empty, insert reset time
+        # else do nothing
         cur.execute("""
             insert into reset_time (id, time)
             values (1, %s)
-            on conflict (id) do nothing
+            on conflict (id) do nothing;
         """, (now + timedelta(hours=24),))
+        conn.commit()
 
-        # get cur reset_time
-        cur.execute("SELECT time FROM reset_time WHERE id = 1")
+        cur.execute("select time from reset_time;")
         reset = cur.fetchone()[0]
+        # return empty if still before reset time
         if now < reset:
             return jsonify(rankings=None)
-
-        # else return rankings
+        # else return rankings and update time
+        # note: sql returns scores per game
         cur.execute("""
-            SELECT game_id, player_id, score
-            FROM scores
-            ORDER BY score DESC
+            select username, game_id, score
+            from players p join scores s
+            on p.id = s.player_id
+            order by game_id asc, score desc;
         """)
         rows = cur.fetchall()
-        # update reset_time for next 24h
         cur.execute("""
-            UPDATE reset_time
-            SET time = %s
-            WHERE id = 1";
+            update reset_time
+            set time = %s;
         """, (now + timedelta(hours=24),))
-    conn.commit()
-
-    return jsonify(rankings=rows)
+        conn.commit()
+        return jsonify(rankings=rows)
 
 
 #---------------- main ---------------------
