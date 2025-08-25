@@ -10,6 +10,7 @@ from psycopg2.extras import DictCursor, RealDictCursor
 # mine
 import db
 from games.simon import simon_bp
+from games.minesweeper import mines_bp
 
 
 # can only have 1 app instance, which necessitates Blueprints to keep things modular and organized
@@ -20,7 +21,8 @@ app.secret_key = app.config['SECRET_KEY']
 # opts: filesystem, redis, memcached, mongodb, sqlalchemy
 app.config['SESSION_TYPE'] = 'filesystem'
 # remember to incl url prefix in the JS fetches
-app.register_blueprint(simon_bp, url_prefix='/simon')
+app.register_blueprint(simon_bp)
+app.register_blueprint(mines_bp)
 # cached data per user session
 Session(app)
 
@@ -135,47 +137,6 @@ def auth():
     return redirect(url_for('home'))
 
 
-def store_tokens(id, access_t, refresh_t, expires_at):
-    conn = db.get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO tokens
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (id) DO UPDATE
-                SET access_t = EXCLUDED.access_t,
-                    refresh_t = EXCLUDED.refresh_t,
-                    expires_at = EXCLUDED.expires_at;
-            """, (id, access_t, refresh_t, expires_at))
-        conn.commit()
-    finally:
-        db.close_conn()
-
-
-def get_access_token(id):
-    conn = db.get_conn()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                select access_t, refresh_t, expires_at from tokens
-                where id = %s;
-            """, (id,))
-            row = cur.fetchone()
-            if row is None:
-                return "Discord user not found", 400
-            # if now has passed expire time - 60s
-            if row['expires_at'] - 60 <= int(time.time()):
-                r = refresh_token(row['refresh_t'])
-                access_t = r['access_token']
-                expires_at = r['expires_in'] + int(time.time())
-                store_tokens(id, access_t, r['refresh_token'], expires_at)
-                return access_t
-            else:
-                return row['access_t']
-    finally:
-        db.close_conn()
-
-
 """
 return:
 {
@@ -236,6 +197,89 @@ def get_user_deets(access_token):
     return r.json()
 
 
+def store_tokens(id, access_t, refresh_t, expires_at):
+    conn = db.get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO tokens
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET access_t = EXCLUDED.access_t,
+                    refresh_t = EXCLUDED.refresh_t,
+                    expires_at = EXCLUDED.expires_at;
+            """, (id, access_t, refresh_t, expires_at))
+        conn.commit()
+    finally:
+        db.close_conn()
+
+
+# returns either the old access_t or a new one if expired by refreshing
+def get_access_token(id):
+    conn = db.get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                select access_t, refresh_t, expires_at from tokens
+                where id = %s;
+            """, (id,))
+            row = cur.fetchone()
+            if row is None:
+                return "Discord user not found", 400
+            # if now has passed expire time - 60s
+            if row['expires_at'] - 60 <= int(time.time()):
+                r = refresh_token(row['refresh_t'])
+                access_t = r['access_token']
+                expires_at = r['expires_in'] + int(time.time())
+                store_tokens(id, access_t, r['refresh_token'], expires_at)
+                return access_t
+            else:
+                return row['access_t']
+    finally:
+        db.close_conn()
+
+
+# game selection menu
+@app.route('/')
+def home():
+    return render_template('home.html')
+
+
+# <param> is required in the route to be captured
+@app.route('/play/<game>', methods=['GET'])
+def play(game):
+    # later, use the ids to redir players following its seq
+    if game in app.config['GAMES']:
+        init_scores(game)
+        init_scores_db(session['id'], game)
+        return render_template(f'{game}.html')
+    return 'Game not found!', 404
+
+
+# 2d sesh vars are not automatically init'd
+def init_scores(game):
+    game_id = app.config['GAMES'][game]
+    if 'score' not in session:
+        session['score'] = {}
+    if game_id not in session['score']:
+        session['score'][game_id] = {}
+
+
+# to guarantee hscore retrival is not none
+def init_scores_db(id, game):
+    conn = db.get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                insert into scores (player_id, game_id)
+                values (%s, %s)
+                on conflict (player_id, game_id) do nothing;
+            """, (id, app.config['GAMES'][game]))
+        conn.commit()
+    finally:
+        db.close_conn()
+
+
 # discord bot has a background scheduler that pings every hour
 # once ping time == reset_time, send response
 @app.route('/api/rankings')
@@ -276,40 +320,6 @@ def send_rankings():
     conn.commit()
 
     return jsonify(rankings=rows)
-
-
-# game selection menu
-@app.route('/')
-def home():
-    return render_template('home.html')
-
-
-# <param> is required in the route to be captured
-@app.route('/play/<game>', methods=['GET'])
-def play(game):
-    conn = db.get_conn()
-    if game == 'simon':
-        with conn.cursor() as cur:
-            cur.execute("""
-                insert into scores (player_id, game_id)
-                values (%s, %s)
-                on conflict (player_id, game_id) do nothing;
-            """, (session['id'], 1))
-        conn.commit()
-        return render_template('simon.html')
-
-    elif game == 'minesweeper':
-        return render_template('minesweeper.html')
-        with conn.cursor() as cur:
-            cur.execute("""
-                insert into scores (player_id, game_id)
-                values (%s, %s)
-                on conflict (player_id, game_id) do nothing;
-            """, (session['id'], 2))
-        conn.commit()
-
-    else:
-        return 'Game not found!', 404
 
 
 #---------------- main ---------------------
