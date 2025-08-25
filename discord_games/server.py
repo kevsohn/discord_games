@@ -285,22 +285,21 @@ def init_scores_db(id, game):
 # once ping time == reset_time, send response
 @app.route('/api/rankings')
 def send_rankings():
-    now = datetime.now(timezone.utc)
     conn = db.get_conn()
     with conn.cursor() as cur:
         # UPSERT: if db empty, insert reset time
         # else do nothing
         cur.execute("""
             insert into reset_time (id, time)
-            values (1, %s)
+            values (1, now() + interval '24 hours')
             on conflict (id) do nothing;
-        """, (now + timedelta(hours=24),))
+        """)
         conn.commit()
 
         cur.execute("select time from reset_time;")
         reset = cur.fetchone()[0]
         # return empty if still before reset time
-        if now < reset:
+        if datetime.now(timezone.utc) < reset:
             return jsonify(rankings=None)
         # else return rankings and update time
         # note: sql returns scores per game
@@ -313,8 +312,8 @@ def send_rankings():
         rows = cur.fetchall()
         cur.execute("""
             update reset_time
-            set time = %s;
-        """, (now + timedelta(hours=24),))
+            set time = now() + interval '24 hours';
+        """)
         conn.commit()
         return jsonify(rankings=rows)
 
