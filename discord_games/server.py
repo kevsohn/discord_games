@@ -91,6 +91,7 @@ with app.app_context():
 # redirects straight to discord OAuth2
 @app.route('/login')
 def login():
+    send_rankings()
     # encoded cuz it just be like that
     encoded_url = quote(app.config['REDIR_URI'], safe="")
     # scope: whatever perms selected on the dev website
@@ -307,7 +308,7 @@ def send_rankings():
         # else do nothing
         cur.execute("""
             insert into reset_time (id, time)
-            values (1, now() + interval '24 hours')
+            values (1, now() + interval '5 seconds')
             on conflict (id) do nothing;
         """)
         conn.commit()
@@ -328,7 +329,7 @@ def send_rankings():
         rows = cur.fetchall()
         cur.execute("""
             update reset_time
-            set time = now() + interval '24 hours';
+            set time = now() + interval '5 seconds';
         """)
         conn.commit()
         return jsonify(rankings=rows)

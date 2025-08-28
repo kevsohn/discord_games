@@ -1,0 +1,68 @@
+<html>
+<head>
+  <title>Numberdle</title>
+</head>
+
+<body>
+    <h1>Guess the Number!</h1>
+    <div id='status'>Click 'Start' to play</div>
+
+    <label for="label">Enter your guess:</label>
+    <input 
+    type="text" 
+    id="guess" 
+    placeholder="a number between 0-100" 
+    oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+    required
+    ></input>
+    <button onclick="verify()">Submit</button>
+    
+    <div id='score'>Score:</div>
+    <div id='hscore'>Best Score:</div>
+    <button onclick='start()'>Start</button>
+
+<script>
+    let max_turn;
+
+    async function start() {
+        const r = await fetch('/num_guess/start', {method: 'GET'})
+        const data = await r.json()
+        max_turn = data.max_turn
+        document.getElementById("status").textContent = "Take a guess!"
+        document.getElementById('score').textContent = `Turn: 1/${max_turn}`
+        document.getElementById('hscore').textContent = `Best Score: ${data.hscore}/${max_turn}`
+    }
+
+    async function verify() {
+        const guess = document.getElementById("guess").value;
+        if (guess === "") {
+            document.getElementById("status").textContent = "You know what a number is, right?"
+            return
+        }
+
+        const num = Number(guess);
+        const r = await fetch('/num_guess/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({guess: num})
+        });
+        const data = await r.json()
+
+        if (data.status == 'game_over') {
+            document.getElementById('status').textContent = `So close... (Answer: ${data.ans})`;
+            document.getElementById('score').textContent = `Score: X/${max_turn}`;
+            document.getElementById('hscore').textContent = `Best Score: ${data.hscore}/${max_turn}`;
+        }
+        else if (data.status == 'win') {
+            document.getElementById('status').textContent = 'You got it!';
+            document.getElementById('score').textContent = `Score: ${data.final}/${max_turn}`;
+            document.getElementById('hscore').textContent = `Best Score: ${data.hscore}/${max_turn}`;
+        }
+        else if (data.status == 'continue') {
+            document.getElementById('status').textContent = `Try again. (Hint: ${data.hint})`;
+            document.getElementById('score').textContent = `Turn: ${data.score}/${max_turn}`;
+        }
+    }
+</script>
+</body>
+</html>
