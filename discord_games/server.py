@@ -11,6 +11,7 @@ from psycopg2.extras import DictCursor, RealDictCursor
 import db
 from games.simon import simon_bp
 from games.minesweeper import mines_bp
+from games.num_guess import guess_bp
 
 
 # can only have 1 app instance, which necessitates Blueprints to keep things modular and organized
@@ -23,6 +24,7 @@ app.config['SESSION_TYPE'] = 'filesystem'
 # remember to incl url prefix in the JS fetches
 app.register_blueprint(simon_bp)
 app.register_blueprint(mines_bp)
+app.register_blueprint(guess_bp)
 # cached data per user session
 Session(app)
 
@@ -42,7 +44,9 @@ with app.app_context():
                 drop table if exists reset_time;
             """)
             # id: discord id
-            # expires_at: access_t expiry time in secs since unix epoch UTC
+            # access_t: access token from discord to request info about player
+            # refresh_t: use to get a new access_t after expiry
+            # expires_at: access_t expiry time [secs since unix epoch UTC]
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS tokens (
                     id BIGINT PRIMARY KEY,
@@ -52,6 +56,7 @@ with app.app_context():
                 );
             """)
             # id: discord id
+            # id: discord username
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     id BIGINT PRIMARY KEY,
@@ -59,18 +64,19 @@ with app.app_context():
                 );
             """)
             # game_id: i.e. 'simon', 'minesweeper', etc
-            # hscore: all time high score/game
+            # hscore: all-time high score/game (IS NULL TO BE INIT'D)
             # score: daily scores/game that reset every 24h
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS scores (
                     player_id BIGINT REFERENCES players(id),
                     game_id INT NOT NULL,
-                    hscore INT DEFAULT 0,
+                    hscore INT,
                     score INT DEFAULT 0,
                     PRIMARY KEY (player_id, game_id)
                  );
             """)
             # to track when the rankings should be announced
+            # time: TIMESTAMP in UTC for standarization
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS reset_time (
                     id INT PRIMARY KEY DEFAULT 1,
@@ -252,12 +258,13 @@ def play(game):
     # later, use the ids to redir players following its seq
     if game in app.config['GAMES']:
         init_scores(game)
+        init_hscores(game)
         init_scores_db(session['id'], game)
         return render_template(f'{game}.html')
     return 'Game not found!', 404
 
 
-# 2d sesh vars are not automatically init'd
+# init 2d session vars since not auto
 def init_scores(game):
     game_id = app.config['GAMES'][game]
     if 'score' not in session:
@@ -266,7 +273,16 @@ def init_scores(game):
         session['score'][game_id] = {}
 
 
-# to guarantee hscore retrival is not none
+def init_hscores(game):
+    game_id = app.config['GAMES'][game]
+    if 'hscore' not in session:
+        session['hscore'] = {}
+    if game_id not in session['hscore']:
+        session['hscore'][game_id] = {}
+
+
+# to ensure player and game id is registered for any api calls
+# and ensure selecting hscore is None bc hscore is null
 def init_scores_db(id, game):
     conn = db.get_conn()
     try:

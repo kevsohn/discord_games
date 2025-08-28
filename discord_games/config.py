@@ -19,5 +19,6 @@ DB_URL = environ.get('DB_URL')
 # rank them in order of desired gauntlet seq
 GAMES = {
         'simon': 1,
-        'minesweeper': 2
+        'minesweeper': 2,
+        'num_guess': 3
 }

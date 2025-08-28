@@ -1,9 +1,13 @@
 from os import path
 from random import choice
+
 from flask import Blueprint, session, request, jsonify
 from psycopg2.extras import RealDictCursor
+
 import config
 import db
+import db_utils
+
 
 # globals
 game = path.splitext(path.basename(__file__))[0]
@@ -20,8 +24,8 @@ colours = ["r", "g", "b", "o"]
 # --------------- helper ------------------
 def reset_state():
     session['sequence'] = [choice(colours) for _ in range(max_seq)]
-    session['score'][gid] = 0
     session['turn_num'] = 0
+    session['score'][gid] = 0
 
 
 # ---------------- main -------------------
@@ -31,21 +35,12 @@ def reset_state():
 # not that POST is infallable since all the info is still visible to men-in-the-middle
 @simon_bp.route('/start', methods=['GET'])
 def start():
-    conn = db.get_conn()
-    with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("""
-            select hscore from scores
-            where player_id = %s and game_id = %s
-        """, (session['id'], gid))
-        row = cur.fetchone()
-        if row is None:
-            # client expects json so can't just return text
-            return jsonify(error="User not found"), 400
-        session['hscore'] = row['hscore']
     reset_state()
-    return jsonify(highscore=session['hscore'])
+    session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
+    return jsonify(highscore=session['hscore'][gid])
 
 
+# the current score gives the max turn num
 @simon_bp.route('/sequence', methods=['POST'])
 def get_sequence():
     seq = session['sequence']
@@ -53,7 +48,7 @@ def get_sequence():
     return jsonify(sequence=seq[:score+1])
 
 
-# state change driver
+# state change driver using status
 @simon_bp.route('/verify', methods=['POST'])
 def verify_choice():
     colour = request.json.get('choice')
@@ -62,38 +57,25 @@ def verify_choice():
 
     turn_num = session['turn_num']
     score = session['score'][gid]
-    # if game over
+    # game over
     if colour != session['sequence'][turn_num]:
-        conn = db.get_conn()
-        hscore = session['hscore']
+        hscore = session['hscore'][gid]
+        # only update hscore if ending score > hscore
         if score > hscore:
             hscore = score
-            # store all time high score for this game
-            with conn.cursor() as cur:
-                cur.execute("""
-                    update scores
-                    set hscore = %s
-                    where player_id = %s and game_id = %s;
-                """, (hscore, session['id'], gid))
-            conn.commit()
-        # store daily score
-        with conn.cursor() as cur:
-            cur.execute("""
-                update scores
-                set score = %s
-                where player_id = %s and game_id = %s;
-            """, (score, session['id'], gid))
-        conn.commit()
+            db_utils.update_hscore(hscore, session['id'], gid)
+        # update daily score
+        db_utils.update_score(score, session['id'], gid)
         return jsonify(status='game_over', highscore=hscore, final=score)
-
+    # success
     turn_num += 1
-    # if last correct turn
+    # if last possible turn, continue to next round
     # better than turn_num > score if they somehow get out of sync
     if turn_num == score+1:
+        # reset and incr score by 1
         session['turn_num'] = 0
         session['score'][gid] = turn_num
         return jsonify(status='continue', score=turn_num)
-
-    # else goto next turn in seq
+    # else goto next colour in seq
     session['turn_num'] = turn_num
     return jsonify(status='next')
