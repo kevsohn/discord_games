@@ -1,0 +1,285 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minesweeper</title>
+  <style>
+    :root {
+      --size: 10;           /* number of columns/rows */
+      --gap: 4px;           /* spacing between squares */
+      --tile: 40px;         /* base tile size (fallback if aspect-ratio unsupported) */
+      --bg: #0f172a;        /* slate-900 */
+      --panel: #111827;     /* gray-900 */
+      --accent: #22c55e;    /* green-500 */
+      --tile-bg: #1f2937;   /* gray-800 */
+      --tile-hover: #374151;/* gray-700 */
+      --tile-open: #111827; /* gray-900 */
+      --tile-border: #111827;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(1200px 800px at 20% 10%, #0b1220, var(--bg));
+      color: #e5e7eb;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 32px auto;
+      padding: 16px;
+    }
+
+    h1 {
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      margin: 0 0 12px;
+    }
+
+    .controls {
+      background: var(--panel);
+      border: 1px solid #1f2937;
+      border-radius: 14px;
+      padding: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+    }
+
+    .controls label {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+
+    .controls input[type="number"] {
+      width: 80px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid #334155;
+      background: #0b1220;
+      color: #e5e7eb;
+    }
+
+    .btn {
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      background: linear-gradient(180deg, #1f2937, #0b1220);
+      color: #e5e7eb;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+
+    /* Grid container */
+    .grid {
+      --cols: var(--size);
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(var(--cols), 1fr);
+      gap: var(--gap);
+      user-select: none;
+    }
+
+    /* Each tile is a button for a11y and focus */
+    .tile {
+      position: relative;
+      display: inline-grid;
+      place-items: center;
+      width: 100%;i
+      aspect-ratio: 1 / 1;                 /* keeps perfect squares in modern browsers */
+      /* Fallback for very old browsers: fixed height */
+      height: var(--tile);
+      background: var(--tile-bg);
+      border: 1px solid var(--tile-border);
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 16px;
+      color: #e5e7eb;
+      cursor: pointer;
+      outline: none;
+      transition: background 120ms ease, transform 60ms ease;
+    }
+
+    .tile:hover { background: var(--tile-hover); }
+    .tile:active { transform: translateY(1px); }
+
+    /* States */
+    .tile.open { background: var(--tile-open); cursor: default; }
+    .tile.flag::after {
+      content: "🚩";
+      font-size: 16px;
+    }
+
+    /* Number coloring (like Minesweeper) */
+    .n1 { color: #60a5fa; } /* blue-400 */
+    .n2 { color: #34d399; } /* emerald-400 */
+    .n3 { color: #f87171; } /* red-400 */
+    .n4 { color: #a78bfa; } /* violet-400 */
+    .n5 { color: #fbbf24; } /* amber-400 */
+    .n6 { color: #22d3ee; } /* cyan-400 */
+    .n7 { color: #f472b6; } /* pink-400 */
+    .n8 { color: #9ca3af; } /* gray-400 */
+
+    .legend { font-size: 13px; opacity: 0.8; margin-top: 10px; }
+    .legend kbd { background:#0b1220; border:1px solid #334155; border-bottom-width:2px; padding:2px 6px; border-radius:6px; }
+  </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <h1>Sweep them Mines Boy (DMZ Simulator)</h1>
+
+        <div class="controls">
+          <div id='hscore'>High Score: </div>
+          <div id='score'>Score: 0</div>
+          <div id='nmines'>🚩: </div>
+          <button class='btn' id='start'>Start</button>
+          <span style="flex:1"></span>
+          <span class="legend">Left‑click: open • Right‑click: flag</span>
+        </div>
+
+        <div id="grid" class="grid" aria-label="Minesweeper grid" role="grid"></div>
+    </div>
+
+    <script>
+        const gap_size = 4
+        let start_t = 0
+        let elapsed_t = 0
+        let timer_id = null
+
+        function start_timer() {
+            if (timer_id) return
+            start_t = Date.now() - elapsed_t*1000
+            timer_id = setInterval(() => {
+                elapsed_t = Math.floor((Date.now()-start_t)/1000)
+                document.getElementById('score').textContent = `Score: ${elapsed_t}`
+            }, 1000)
+        }
+
+        function stop_timer() {
+            clearInterval(timer_id);
+            timer_id = null
+        }
+
+        async function create_grid() {
+            const r = await fetch('/minesweeper/create_grid', {method: 'GET'})
+            const data = await r.json()
+            const n = data.ndim
+            
+            // update CSS variables for layout
+            const grid = document.getElementById('grid');
+            grid.style.setProperty('--cols', n);
+            grid.style.setProperty('--size', n);
+            grid.style.setProperty('--gap', gap_size + 'px');
+            grid.innerHTML = '';
+
+            for (let r = 0; r < n; r++) {
+                for (let c = 0; c < n; c++) {
+                    const tile = document.createElement('button');
+                    tile.className = 'tile';
+                    tile.setAttribute('role', 'gridtile');
+                    tile.dataset.row = r;
+                    tile.dataset.col = c;
+
+                    // demo: show coordinates on middle-click (auxclick)
+                    tile.title = `(${r}, ${c})`;
+
+                    // left click: open
+                    tile.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        await open_tile(tile);
+                    });
+                    // right click: flag
+                    tile.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        toggle_flag(tile);
+                        //
+                    });
+
+                    grid.appendChild(tile);
+                }
+            }
+        }
+
+        function toggle_flag(tile) {
+            if (tile.classList.contains('open')) return // can't flag opened tile
+            tile.classList.toggle('flag')
+        }
+
+        async function open_tile(tile) {
+            if (tile.classList.contains('open'))  return
+            tile.classList.remove('flag')
+            // game logic
+            const revealed = await verify(tile.dataset.row, tile.dataset.col)
+            if (revealed == null) return
+            
+            revealed.forEach(tile => {
+                const tiles = document.querySelector(`.tile[data-row="${tile.r}"][data-col="${tile.c}"]`)
+                if (!tiles) return
+                tiles.classList.add('open')
+                tiles.textContent = tile.num === 0 ? '' : tile.num
+                if (tile.num > 0) 
+                    tiles.classList.add('n' + tile.num)
+            });
+        }
+
+        
+        // --------------------- game logic --------------------------
+        async function start() {
+            /*const r = await fetch('/minesweeper/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: {choice: pos}
+            })*/
+            const r = await fetch('/minesweeper/start', {method: 'GET'})
+            const data = await r.json()
+            document.getElementById('hscore').textContent = `High Score: ${data.hscore}`
+            document.getElementById('score').textContent = 'Score: 0'
+            document.getElementById('nmines').textContent = `🚩: ${data.nmines}`
+            elapsed_t = 0
+            start_timer()
+        }
+
+        async function verify(i, j) {
+            const r = await fetch('/minesweeper/verify', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({choice: [i,j]})
+            })
+            const data = await r.json()
+            if (data.status == 'game_over') {
+                stop_timer()
+                update() 
+                // reveal all mines
+                data.mines.forEach(mine => {
+                    const tiles = document.querySelector(`.tile[data-row="${mine[0]}"][data-col="${mine[1]}"]`)
+                    tiles.classList.add('open')
+                    tiles.textContent = '🚩'
+                });
+                return
+            }
+            return data.revealed
+        }
+        
+        function update() {
+            fetch('/minesweeper/update', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({score: elapsed_t})
+            })
+        }
+
+        // ------------------------ main -------------------------------
+        document.getElementById('start').addEventListener('click', start)
+
+        window.onload = async function() {
+            await create_grid()
+        }
+    </script>
+</body>
+</html>
