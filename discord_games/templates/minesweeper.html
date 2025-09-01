@@ -126,29 +126,25 @@
             <div id='score'>Score: </div>
             <div id='nflags'>🚩 </div>
             <div id='timer'>⏱️ </div>
-            <button class='btn' id='start'>Start</button>
             <span style="flex:1"></span>
             <span class="legend">Left‑click: reveal • Right‑click: flag</span>
         </div>
 
-        <div id="grid" class="grid" aria-label="Minesweeper grid" role="grid"></div>
+        <div id="grid" class="grid"></div>
     </div>
 
     <script>
-        const gap_size = 4   // px
-        const max_time = 999 // secs
-        let timer_id = null
-        let elapsed_t = 0    // secs
+        // game vars
+        const gap_size = 4 // px
+        let game_over = true
         let nflags = 0
 
+        // timer vars
+        const max_time = 999 // secs
+        let elapsed_t = 0
+        let timer_id = null
+
         // --------------------- game logic --------------------------
-        // change later to ensure choice != mine
-        async function start() {
-            await init()
-            reset_timer()
-            start_timer()
-        }
-        
         async function init() {
             const r = await fetch('/minesweeper/init', {method: 'GET'})
             const data = await r.json()
@@ -170,11 +166,12 @@
                 for (let c = 0; c < n; c++) {
                     const tile = document.createElement('button')
                     tile.className = 'tile'
-                    tile.setAttribute('role', 'gridtile')
                     tile.dataset.row = r
                     tile.dataset.col = c
+                    
                     // show coordinates on middle-click (auxclick)
                     tile.title = `(${r}, ${c})`
+                    
                     // left click: reveal
                     tile.addEventListener('click', async (e) => {
                         e.preventDefault()
@@ -185,9 +182,21 @@
                         e.preventDefault()
                         await toggle_flag(tile)
                     });
+                    
                     grid.appendChild(tile)
                 }
             }
+        }
+        
+        async function start(i, j) {
+            await init()
+            fetch('/minesweeper/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({choice: [i,j]})
+            })
+            reset_timer()
+            start_timer()
         }
         
         async function verify(i, j) {
@@ -200,6 +209,7 @@
             // do nothing if clicked tile is flagged
             if (data.status == 'flagged') return
             if (data.status == 'game_over') {
+                game_over = true
                 stop_timer()
                 let score = reveal_mines(data.mines)
                 update(score) 
@@ -229,6 +239,13 @@
         async function reveal_tiles(tile) {
             const i = Number(tile.dataset.row)
             const j = Number(tile.dataset.col)
+           
+            // start tile is always safe
+            if (game_over) {
+                await start(i, j)
+                game_over = false
+            }
+
             // get tiles to reveal from server
             // excludes tiles already revealed or flagged
             const revealed = await verify(i, j)
@@ -241,8 +258,9 @@
             })
         }
         
-        // helper fnc
         function reveal_tile(tile, num) {
+            // do nothing if already revealed or flagged
+            if (tile.classList.contains('reveal') || tile.classList.contains('flag')) return
             tile.classList.add('reveal')
             // only show num if non-empty tile
             tile.textContent = num === 0 ? '' : num
@@ -304,7 +322,6 @@
         window.onload = async function() {
             await init()
         }
-        document.getElementById('start').addEventListener('click', start)
     </script>
 </body>
 </html>

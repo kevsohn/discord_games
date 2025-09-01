@@ -22,23 +22,25 @@ ndim = 8
 
 # --------------- helper ------------------
 def reset_state():
-    session['mines'] = gen_mines(nmines, ndim)
     session['board'] = [[0 for _ in range(ndim)] for _ in range(ndim)]
     session['revealed'] = [[False for _ in range(ndim)] for _ in range(ndim)]
     session['flagged'] = [[False for _ in range(ndim)] for _ in range(ndim)]
     session['nflags'] = nmines
 
 
-def gen_mines(nmines, ndim):
+def gen_mines(nmines, ndim, safe_tile):
     coords = [(i,j) for i in range(ndim) for j in range(ndim)]
-    #coords.remove(avoid)
+    coords.remove(safe_tile)
     return sample(coords, nmines)
 
 
 def init_board(mines, board, revealed):
     for mine in mines:
         i,j = mine
+        # mines are '-1'
         board[i][j] = -1
+        # loop thru all 8 neighbours of each mine
+        # and incr mine counter to all neighbouring non-mines
         for r in range(max(i-1, 0), min(i+2, ndim)):
             for c in range(max(j-1, 0), min(j+2, ndim)):
                 if board[r][c] != -1:
@@ -53,7 +55,9 @@ def print_board(board, ndim):
         print('\n')
 
 
+# flood reveal
 def reveal(i, j, board, revealed, flagged):
+    # do nothing if already revealed or flagged
     if revealed[i][j] or flagged[i][j]:
         return
     revealed[i][j] = True
@@ -69,12 +73,19 @@ def reveal(i, j, board, revealed, flagged):
 # ---------------- main -------------------
 @mines_bp.route('/init', methods=['GET'])
 def init():
-    #start_pos = tuple(request.json.get('choice'))
-    #reset_state(start_pos)
+    session.clear()
     reset_state()
-    init_board(session['mines'], session['board'], session['revealed'])
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
     return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'], ndim=ndim)
+
+
+@mines_bp.route('/start', methods=['POST'])
+def start():
+    # start tile is always safe
+    safe_tile = tuple(request.json.get('choice'))
+    session['mines'] = gen_mines(nmines, ndim, safe_tile)
+    init_board(session['mines'], session['board'], session['revealed'])
+    return jsonify(status='success')
 
 
 @mines_bp.route('/verify', methods=['POST'])
@@ -120,9 +131,11 @@ def flag():
 
     flagged = session['flagged']
     nflags = session['nflags']
+    # if flagged, unflag and incr counter
     if (flagged[i][j]):
         flagged[i][j] = False
         nflags += 1
+    # else, vice versa but dont decr if nflags == 0
     else:
         if (nflags == 0):
             return jsonify(toggle=False)
