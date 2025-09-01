@@ -22,9 +22,11 @@ ndim = 8
 
 # --------------- helper ------------------
 def reset_state():
+    session['mines'] = gen_mines(nmines, ndim)
     session['board'] = [[0 for _ in range(ndim)] for _ in range(ndim)]
     session['revealed'] = [[False for _ in range(ndim)] for _ in range(ndim)]
-    session['mines'] = gen_mines(nmines, ndim)
+    session['flagged'] = [[False for _ in range(ndim)] for _ in range(ndim)]
+    session['nflags'] = nmines
 
 
 def gen_mines(nmines, ndim):
@@ -65,36 +67,30 @@ def reveal(i, j, board, revealed):
 
 
 # ---------------- main -------------------
+@mines_bp.route('/create_grid', methods=['GET'])
+def create_grid():
+    return jsonify(ndim=ndim)
+
+
 @mines_bp.route('/start', methods=['GET'])
 def start():
     #start_pos = tuple(request.json.get('choice'))
     #reset_state(start_pos)
     reset_state()
     init_board(session['mines'], session['board'], session['revealed'])
-    # change score/hscore to TEXT
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
-    return jsonify(hscore=session['hscore'][gid], nmines=nmines)
-
-
-@mines_bp.route('/create_grid', methods=['GET'])
-def create_grid():
-    return jsonify(ndim=ndim)
+    return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'])
 
 
 @mines_bp.route('/verify', methods=['POST'])
-def verify_choice():
-    data = request.get_json(silent=True)  # safely parse JSON
-    if not data:
-        return jsonify(error="Invalid JSON"), 400
-
-    choice = data.get("choice")
+def verify():
+    choice = request.json.get("choice")
     if not isinstance(choice, list) or len(choice) != 2:
-        return jsonify(error="Position must be a list of size 2"), 400
-
+        return jsonify(error="Coordinate must be a list of size 2"), 400
     try:
         i,j = map(int, choice)  # ensure coordinates are integers
     except ValueError:
-        return jsonify(error="Coordinates must be integers"), 400
+        return jsonify(error="Coordinate must be a pair of integers"), 400
 
     mines = session['mines']
     if (i,j) in mines:
@@ -113,11 +109,36 @@ def verify_choice():
     return jsonify(status='continue', revealed=revealed_nums)
 
 
+@mines_bp.route('/flag', methods=['POST'])
+def flag():
+    tile = request.json.get("tile")
+    if not isinstance(tile, list) or len(tile) != 2:
+        return jsonify(error="Coordinate must be a list of size 2"), 400
+    try:
+        i,j = map(int, tile)  # ensure coordinates are integers
+    except ValueError:
+        return jsonify(error="Coordinate must be a pair of integers"), 400
+
+    flagged = session['flagged']
+    nflags = session['nflags']
+    if (flagged[i][j]):
+        flagged[i][j] = False
+        nflags += 1
+    else:
+        if (nflags == 0):
+            return jsonify(toggle=False)
+        flagged[i][j] = True
+        nflags -= 1
+    session['flagged'][i][j] = flagged[i][j]
+    session['nflags'] = nflags
+    return jsonify(toggle=True, nflags=nflags)
+
+
 @mines_bp.route('/update', methods=['POST'])
 def update_scores():
     score = request.json.get('score')
-    # less is better since time
-    if score < session['hscore'][gid]:
+    # score == num of mines flagged correctly
+    if score > session['hscore'][gid]:
         db_utils.update_hscore(score, session['id'], gid)
     db_utils.update_score(score, session['id'], gid)
     return jsonify(status='success')
