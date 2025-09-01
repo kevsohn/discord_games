@@ -72,8 +72,8 @@ def create_grid():
     return jsonify(ndim=ndim)
 
 
-@mines_bp.route('/start', methods=['GET'])
-def start():
+@mines_bp.route('/init', methods=['GET'])
+def init():
     #start_pos = tuple(request.json.get('choice'))
     #reset_state(start_pos)
     reset_state()

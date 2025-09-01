@@ -214,12 +214,12 @@
 
             if (revealed == null) return
             revealed.forEach(tile => {
-                const tiles = document.querySelector(`.tile[data-row="${tile.r}"][data-col="${tile.c}"]`)
-                if (!tiles) return
-                tiles.classList.add('open')
-                tiles.textContent = tile.num === 0 ? '' : tile.num
+                const e = document.querySelector(`.tile[data-row="${tile.r}"][data-col="${tile.c}"]`)
+                if (!e) return
+                e.classList.add('open')
+                e.textContent = tile.num === 0 ? '' : tile.num
                 if (tile.num > 0) 
-                    tiles.classList.add('n' + tile.num)
+                    e.classList.add('n' + tile.num)
             })
         }
 
@@ -286,7 +286,8 @@
             }
             return data.revealed
         }
-        
+       
+
         function update(score) {
             fetch('/minesweeper/update', {
                 method: 'POST',
@@ -295,9 +296,10 @@
             })
         }
 
+
         // ------------------------ init -------------------------------
         window.onload = async function() {
-            const r = await fetch('/minesweeper/start', {method: 'GET'})
+            const r = await fetch('/minesweeper/init', {method: 'GET'})
             const data = await r.json()
             document.getElementById('hscore').textContent = `High Score: ${data.hscore}`
             document.getElementById('nflags').textContent = `🚩 ${data.nflags}`
