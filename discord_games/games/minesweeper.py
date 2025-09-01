@@ -53,8 +53,8 @@ def print_board(board, ndim):
         print('\n')
 
 
-def reveal(i, j, board, revealed):
-    if revealed[i][j]:
+def reveal(i, j, board, revealed, flagged):
+    if revealed[i][j] or flagged[i][j]:
         return
     revealed[i][j] = True
     # '0' is empty tile (i.e. no mines in nghbrhood)
@@ -63,15 +63,10 @@ def reveal(i, j, board, revealed):
             for c in range(max(j-1, 0), min(j+2, ndim)):
                 if r == i and c == j:
                     continue
-                reveal(r, c, board, revealed)
+                reveal(r, c, board, revealed, flagged)
 
 
 # ---------------- main -------------------
-@mines_bp.route('/create_grid', methods=['GET'])
-def create_grid():
-    return jsonify(ndim=ndim)
-
-
 @mines_bp.route('/init', methods=['GET'])
 def init():
     #start_pos = tuple(request.json.get('choice'))
@@ -79,7 +74,7 @@ def init():
     reset_state()
     init_board(session['mines'], session['board'], session['revealed'])
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
-    return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'])
+    return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'], ndim=ndim)
 
 
 @mines_bp.route('/verify', methods=['POST'])
@@ -92,21 +87,25 @@ def verify():
     except ValueError:
         return jsonify(error="Coordinate must be a pair of integers"), 400
 
-    mines = session['mines']
-    if (i,j) in mines:
-        # return mines to show their pos
-        return jsonify(status='game_over', mines=mines)
-    # else, flood reveal all non-mine tiles
+    # if flagged, do nothing
+    # check first or clicking flagged mine will cause game over
+    flagged = session['flagged']
+    if flagged[i][j]:
+        return jsonify(status='flagged')
+    # if mine, show all mine positions
+    if (i,j) in session['mines']:
+        return jsonify(status='game_over', mines=session['mines'])
+    # else, flood reveal all non-mine tiles EXCEPT flagged ones
     board = session['board']
     revealed = session['revealed']
-    reveal(i, j, board, revealed)
-    revealed_nums = [
+    reveal(i, j, board, revealed, flagged)
+    revealed_tiles = [
         {"r": i, "c": j, "num": board[i][j]}
         for i, row in enumerate(revealed)
         for j, is_revealed in enumerate(row)
         if is_revealed
     ]
-    return jsonify(status='continue', revealed=revealed_nums)
+    return jsonify(status='continue', revealed=revealed_tiles)
 
 
 @mines_bp.route('/flag', methods=['POST'])
@@ -136,8 +135,8 @@ def flag():
 
 @mines_bp.route('/update', methods=['POST'])
 def update_scores():
-    score = request.json.get('score')
     # score == num of mines flagged correctly
+    score = request.json.get('score')
     if score > session['hscore'][gid]:
         db_utils.update_hscore(score, session['id'], gid)
     db_utils.update_score(score, session['id'], gid)
