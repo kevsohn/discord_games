@@ -135,9 +135,10 @@
     </div>
 
     <script>
-        const gap_size = 4  // px
+        const gap_size = 4   // px
+        const max_time = 999 // secs
         let timer_id = null
-        let elapsed_t = 0   // secs
+        let elapsed_t = 0    // secs
         let nflags = 0
 
         // --------------------- game logic --------------------------
@@ -283,10 +284,12 @@
             timer_id = setInterval(() => {
                 elapsed_t++
                 document.getElementById('timer').textContent = '⏱️ '+String(elapsed_t).padStart(3, '0')
+                if (elapsed_t >= max_time) stop_timer()
             }, 1000)
         }
 
         function stop_timer() {
+            if (!timer_id) return
             clearInterval(timer_id);
             timer_id = null
         }
