@@ -1,10 +1,27 @@
+<html lang="en">
 <head>
-    <title>Main Page</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Minigames!!!</title>
+    <link rel='stylesheet' href="{{ url_for('static', filename='home.css') }}">
 </head>
+
 <body>
     <h1>Welcome to the Minigame Gauntlet!</h1>
-    <button onclick="window.location.href='{{ url_for("play", game="simon") }}'">Simon Says</button>
-    <button onclick="window.location.href='{{ url_for("play", game="minesweeper") }}'">Minesweeper</button>
-    <button onclick="window.location.href='{{ url_for("play", game="num_guess") }}'">Numberdle</button>
-</body>
+    <button id='simon' class='btn'>Simon Says</button>
+    <button id='mines'class='btn'>Minesweeper</button>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('simon').addEventListener('click', () => {
+                window.location.href = '{{ url_for('play', game='simon') }}'
+            })
+        })
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('mines').addEventListener('click', () => {
+                window.location.href = '{{ url_for('play', game='minesweeper') }}'
+            })
+        })
+    </script>
+</body>
+</html>

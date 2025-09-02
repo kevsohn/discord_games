@@ -1,0 +1,32 @@
+html, body {
+    margin-top: 10px;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    text-align: center;
+    margin: 30 0 10 0;
+    font-weight: bold;
+}
+
+.btn {
+    cursor: pointer; 
+    width: 100px;
+    height: 50px;
+    font-size: 14px;
+    margin: 6px 0 6px 0;
+    /* center content inside */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* rounded corners */
+    border-radius: 12px;
+}
+.btn:active {
+    transform: scale(0.95);
+}
