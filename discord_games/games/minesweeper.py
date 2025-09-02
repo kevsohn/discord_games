@@ -34,6 +34,13 @@ def gen_mines(nmines, ndim, safe_tile):
     return sample(coords, nmines)
 
 
+def print_board(board, ndim):
+    for i in range(ndim):
+        for j in range(ndim):
+            print(board[i][j], end="  ")
+        print('\n')
+
+
 def init_board(mines, board, revealed):
     for mine in mines:
         i,j = mine
@@ -46,13 +53,6 @@ def init_board(mines, board, revealed):
                 if board[r][c] != -1:
                     board[r][c] += 1
     print_board(board, ndim)
-
-
-def print_board(board, ndim):
-    for i in range(ndim):
-        for j in range(ndim):
-            print(board[i][j], end="  ")
-        print('\n')
 
 
 # flood reveal
@@ -70,10 +70,21 @@ def reveal(i, j, board, revealed, flagged):
                 reveal(r, c, board, revealed, flagged)
 
 
+# only need to check if all non-mine tiles are revealed
+# b/c win is checked after if mine was tripped
+def won(board, revealed):
+    for i in range(ndim):
+        for j in range(ndim):
+            if board[i][j] == -1:
+                continue
+            if not revealed[i][j]:
+                return False
+    return True
+
+
 # ---------------- main -------------------
 @mines_bp.route('/init', methods=['GET'])
 def init():
-    session.clear()
     reset_state()
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
     return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'], ndim=ndim)
@@ -98,14 +109,16 @@ def verify():
     except ValueError:
         return jsonify(error="Coordinate must be a pair of integers"), 400
 
-    # if flagged, do nothing
-    # check first or clicking flagged mine will cause game over
+    # order matters!
     flagged = session['flagged']
     if flagged[i][j]:
+        # do nothing
         return jsonify(status='flagged')
-    # if mine, show all mine positions
+
     if (i,j) in session['mines']:
+        # reveal all mines
         return jsonify(status='game_over', mines=session['mines'])
+
     # else, flood reveal all non-mine tiles EXCEPT flagged ones
     board = session['board']
     revealed = session['revealed']
@@ -116,6 +129,9 @@ def verify():
         for j, is_revealed in enumerate(row)
         if is_revealed
     ]
+    # check win after revealing
+    if won(board, revealed):
+        return jsonify(status='won', revealed=revealed_tiles, score=nmines)
     return jsonify(status='continue', revealed=revealed_tiles)
 
 
@@ -141,6 +157,7 @@ def flag():
             return jsonify(toggle=False)
         flagged[i][j] = True
         nflags -= 1
+
     session['flagged'][i][j] = flagged[i][j]
     session['nflags'] = nflags
     return jsonify(toggle=True, nflags=nflags)

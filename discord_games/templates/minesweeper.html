@@ -62,7 +62,7 @@
       transition: transform 120ms ease, background 120ms ease;
     }
     .btn:hover { transform: translateY(-1px); }
-    .btn:active { transform: translateY(0); }
+    .btn:active { transform: scale(0.9); }
 
     .grid {
       margin-top: 16px;
@@ -91,11 +91,10 @@
       outline: none;
       transition: background 120ms ease, transform 60ms ease;
     }
-
     .tile:hover { background: var(--tile-hover); }
     .tile:active { transform: translateY(1px); }
 
-    /* States */
+    /* controls */
     .tile.reveal { background: var(--tile-reveal); cursor: default; }
     .tile.flag::after {
       content: "🚩";
@@ -126,6 +125,7 @@
             <div id='score'>Score: </div>
             <div id='nflags'>🚩 </div>
             <div id='timer'>⏱️ </div>
+            <button id='reset' class='btn'>🙂</button>
             <span style="flex:1"></span>
             <span class="legend">Left‑click: reveal • Right‑click: flag</span>
         </div>
@@ -151,6 +151,8 @@
             document.getElementById('hscore').textContent = `High Score: ${data.hscore}`
             document.getElementById('score').textContent = 'Score: 0'
             document.getElementById('nflags').textContent = `🚩 ${data.nflags}`
+            document.getElementById('timer').textContent = '⏱️ '+String(0).padStart(3, '0')
+            document.getElementById('reset').textContent = '🙂'
             await create_grid(data.ndim)
         }
         
@@ -206,7 +208,7 @@
                 body: JSON.stringify({choice: [i,j]})
             })
             const data = await r.json()
-            // do nothing if clicked tile is flagged
+            
             if (data.status == 'flagged') return
             if (data.status == 'game_over') {
                 game_over = true
@@ -214,7 +216,16 @@
                 let score = reveal_mines(data.mines)
                 update(score) 
                 document.getElementById('score').textContent = `Score: ${score}`
+                document.getElementById('reset').textContent = '😵'
                 return
+            }
+            if (data.status == 'won') {
+                game_over = true
+                stop_timer()
+                update(data.score) 
+                document.getElementById('score').textContent = `Score: ${data.score}`
+                document.getElementById('reset').textContent = '😎'
+                return data.revealed
             }
             return data.revealed
         }
@@ -223,14 +234,12 @@
             let score = 0
             mines.forEach(tile => {
                 const mine = document.querySelector(`.tile[data-row="${tile[0]}"][data-col="${tile[1]}"]`)
-                // scored only if mine correctly flagged
-                if (mine.classList.contains('flag')) {
+                // if mine correctly flagged, +1 score
+                // flag is already toggled
+                if (mine.classList.contains('flag')) 
                     score++
-                    // untoggle to prevent double flags
-                    mine.classList.toggle('flag')
-                    mine.textContent = '🚩'
-                }
-                else mine.textContent = '💣'
+                else 
+                    mine.textContent = '💣'
                 mine.classList.add('reveal')
             })
             return score
@@ -242,16 +251,14 @@
            
             // start tile is always safe
             if (game_over) {
-                await start(i, j)
                 game_over = false
+                await start(i, j)
             }
-
-            // get tiles to reveal from server
+            // tiles to reveal
             // excludes tiles already revealed or flagged
             const revealed = await verify(i, j)
             // only true if flagged or game over
             if (revealed == null) return
-            // reveal all relevant tiles
             revealed.forEach(t_info => {
                 const t = document.querySelector(`.tile[data-row="${t_info.r}"][data-col="${t_info.c}"]`)
                 reveal_tile(t, Number(t_info.num))
@@ -280,7 +287,8 @@
                 body: JSON.stringify({tile: [i, j]})
             })
             const data = await r.json()
-            // only true if nflags = 0, aka no more flagging
+            
+            // only true if nflags = 0
             if (!data.toggle) return
             tile.classList.toggle('flag')
             document.getElementById('nflags').textContent = `🚩 ${data.nflags}`
@@ -315,13 +323,16 @@
         function reset_timer() {
             stop_timer()
             elapsed_t = 0
-            document.getElementById('timer').textContent = '⏱️ '+String(0).padStart(3, '0')
         }
         
         // ------------------------ init -------------------------------
         window.onload = async function() {
             await init()
         }
+
+        document.getElementById('reset').addEventListener('click', async () => {
+            await init()
+        })
     </script>
 </body>
 </html>
