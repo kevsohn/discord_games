@@ -16,8 +16,8 @@ gid = config.GAMES[game]
 mines_bp = Blueprint(f'{game}', __name__, url_prefix=f'/{game}')
 
 # game params
-nmines = 10
-ndim = 8
+ndim = config.MINESWEEPER['ndim']
+nmines = config.MINESWEEPER['nmines']
 
 
 # --------------- helper ------------------

@@ -13,7 +13,7 @@ gid = config.GAMES[game]
 guess_bp = Blueprint(f'{game}', __name__, url_prefix=f'/{game}')
 
 # game params
-max_turn = 7
+max_turn = config.GUESS['max_turn']
 
 
 # --------------- helper ------------------

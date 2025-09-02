@@ -9,7 +9,7 @@ load_dotenv()
 BOT_TOKEN = environ.get('BOT_TOKEN')
 CLIENT_ID = environ.get('CLIENT_ID')
 CLIENT_SECRET = environ.get('CLIENT_SECRET')
-API_ENDPOINT = environ.get('API_ENDPOINT')
+API_ENDPOINT = 'https://discord.com/api/v10'
 REDIR_URI = environ.get('REDIR_URI')
 
 # for server
@@ -21,4 +21,16 @@ GAMES = {
         'simon': 1,
         'minesweeper': 2,
         'num_guess': 3
+}
+
+# adjustable game params
+SIMON = {
+        'max_seq': 20
+}
+MINESWEEPER = {
+        'ndim': 8,
+        'nmines': 10
+}
+GUESS = {
+        'max_turn': 7
 }

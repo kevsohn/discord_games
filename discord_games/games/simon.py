@@ -17,7 +17,7 @@ gid = config.GAMES[game]
 simon_bp = Blueprint(f'{game}', __name__, url_prefix=f'/{game}')
 
 # game params
-max_seq = 20
+max_seq = config.SIMON['max_seq']
 colours = ["r", "g", "b", "o"]
 
 
