@@ -29,6 +29,7 @@ app.register_blueprint(guess_bp)
 Session(app)
 
 
+#============================== INIT ===================================
 # init a pool of conns instead of constantly creating and closing new conns
 db.init_app(app)
 # b/c db code only works inside url methods
@@ -88,10 +89,10 @@ with app.app_context():
         db.close_conn()
 
 
+#================================= LOGIN/AUTH ====================================
 # redirects straight to discord OAuth2
 @app.route('/login')
 def login():
-    send_rankings()
     # encoded cuz it just be like that
     encoded_url = quote(app.config['REDIR_URI'], safe="")
     # scope: whatever perms selected on the dev website
@@ -247,6 +248,7 @@ def get_access_token(id):
         db.close_conn()
 
 
+#================================= GAME =================================
 # game selection menu
 @app.route('/')
 def home():
@@ -256,13 +258,14 @@ def home():
 # <param> is required in the route to be captured
 @app.route('/play/<game>', methods=['GET'])
 def play(game):
-    # later, use the ids to redir players following its seq
-    if game in app.config['GAMES']:
-        init_scores(game)
-        init_hscores(game)
-        init_scores_db(session['id'], game)
-        return render_template(f'{game}.html')
-    return 'Game not found!', 404
+    if game not in app.config['GAMES']:
+        return 'Game not found', 404
+    # 1st person to play any game inits daily reset time
+    init_reset_time()
+    init_scores(game)
+    init_hscores(game)
+    init_scores_db(session['id'], game)
+    return render_template(f'{game}.html')
 
 
 # init 2d session vars since not auto
@@ -283,7 +286,7 @@ def init_hscores(game):
 
 
 # to ensure player and game id is registered for any api calls
-# and ensure selecting hscore is None bc hscore is null
+# hscore is None b/c not init
 def init_scores_db(id, game):
     conn = db.get_conn()
     try:
@@ -298,28 +301,40 @@ def init_scores_db(id, game):
         db.close_conn()
 
 
+# =================================== API ===================================
+# UPSERT reset time
+def init_reset_time():
+    conn = db.get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                insert into reset_time (id, time)
+                values (1, now() + interval '5 seconds')
+                on conflict (id) do nothing;
+            """)
+            conn.commit()
+    finally:
+        db.close_conn()
+
+
 # discord bot has a background scheduler that pings every hour
 # once ping time == reset_time, send response
 @app.route('/api/rankings')
-def send_rankings():
+def get_daily_rankings():
     conn = db.get_conn()
     with conn.cursor() as cur:
-        # UPSERT: if db empty, insert reset time
-        # else do nothing
-        cur.execute("""
-            insert into reset_time (id, time)
-            values (1, now() + interval '5 seconds')
-            on conflict (id) do nothing;
-        """)
-        conn.commit()
-
         cur.execute("select time from reset_time;")
-        reset = cur.fetchone()[0]
-        # return empty if still before reset time
-        if datetime.now(timezone.utc) < reset:
+        reset_t = cur.fetchone()[0]
+        # should be non-none from init_reset_time() but just in case
+        if reset_t is None:
+            return jsonify(error='Reset time not initialized')
+
+        # do nothing if not yet reset time
+        if datetime.now(timezone.utc) < reset_t:
             return jsonify(rankings=None)
-        # else return rankings and update time
-        # note: sql returns scores per game
+
+        # get rankings and update reset_t
+        # SQL returns scores/game
         cur.execute("""
             select username, game_id, score
             from players p join scores s
@@ -335,7 +350,7 @@ def send_rankings():
         return jsonify(rankings=rows)
 
 
-#---------------- main ---------------------
+#=============================== MAIN ================================
 if __name__ == '__main__':
     try:
         # ssl_context makes the app run with HTTPS
