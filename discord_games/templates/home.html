@@ -8,18 +8,18 @@
 
 <body>
     <h1>Welcome to the Minigame Gauntlet!</h1>
-    <button id='simon' class='btn'>Simon Says</button>
     <button id='mines'class='btn'>Minesweeper</button>
+    <button id='simon' class='btn'>Simon Says</button>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('simon').addEventListener('click', () => {
-                window.location.href = '{{ url_for('play', game='simon') }}'
+            document.getElementById('mines').addEventListener('click', () => {
+                window.location.href = '{{ url_for('play', game='minesweeper') }}'
             })
         })
         document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('mines').addEventListener('click', () => {
-                window.location.href = '{{ url_for('play', game='minesweeper') }}'
+            document.getElementById('simon').addEventListener('click', () => {
+                window.location.href = '{{ url_for('play', game='simon') }}'
             })
         })
     </script>

@@ -18,18 +18,18 @@ BASE_URL = environ.get('BASE_URL')
 DB_URL = environ.get('DB_URL')
 # rank them in order of desired gauntlet seq
 GAMES = {
-        'simon': 1,
-        'minesweeper': 2,
+        'minesweeper': 1,
+        'simon': 2,
         'num_guess': 3
 }
 
 # adjustable game params
-SIMON = {
-        'max_seq': 20
-}
 MINESWEEPER = {
         'ndim': 8,
         'nmines': 10
+}
+SIMON = {
+        'max_seq': 20
 }
 GUESS = {
         'max_turn': 7
