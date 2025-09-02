@@ -26,6 +26,7 @@ def reset_state():
     session['sequence'] = [choice(colours) for _ in range(max_seq)]
     session['turn_num'] = 0
     session['score'][gid] = 0
+    session['user_turn'] = False
 
 
 # ---------------- main -------------------
@@ -43,6 +44,9 @@ def init():
 # the current score gives the max turn num
 @simon_bp.route('/get_sequence', methods=['POST'])
 def get_sequence():
+    if session['user_turn']:
+        return jsonify(error='Should be house turn'), 400
+    session['user_turn'] = True
     seq = session['sequence']
     score = session['score'][gid]
     return jsonify(sequence=seq[:score+1])
@@ -51,14 +55,19 @@ def get_sequence():
 # state change driver using status
 @simon_bp.route('/verify', methods=['POST'])
 def verify_choice():
+    if not session['user_turn']:
+        return jsonify(error='Should be user turn'), 400
+
     colour = request.json.get('choice')
     if colour not in colours:
         return jsonify(error='Unexpected choice'), 400
 
     turn_num = session['turn_num']
     score = session['score'][gid]
+
     # game over
     if colour != session['sequence'][turn_num]:
+        session['user_turn'] = False
         hscore = session['hscore'][gid]
         # only update hscore if ending score > hscore
         if score > hscore:
@@ -67,11 +76,13 @@ def verify_choice():
         # update daily score
         db_utils.update_score(score, session['id'], gid)
         return jsonify(status='game_over', hscore=hscore, score=score)
+
     # success
     turn_num += 1
     # if last possible turn, continue to next round
     # better than turn_num > score if they somehow get out of sync
     if turn_num == score+1:
+        session['user_turn'] = False
         # reset and incr score by 1
         session['turn_num'] = 0
         session['score'][gid] = turn_num
@@ -79,3 +90,5 @@ def verify_choice():
     # else goto next colour in seq
     session['turn_num'] = turn_num
     return jsonify(status='next')
+
+

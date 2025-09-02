@@ -1,6 +1,6 @@
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
+    <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Simon Says</title>
     <link rel='stylesheet' href="{{ url_for('static', filename='simon.css') }}">
@@ -25,10 +25,13 @@
         // the class attribute is a group identifier and
         // querySelectorAll returns all elems as a NodeList
         const squares = document.querySelectorAll('.colour')
+        // game params
         const flash_time = 200  // ms
-        const wait_time = 1000  // ms
+        const wait_time = 800  // ms
+        let prev_click_time = 0
 
         async function init() {
+            disable_squares()
             // urls on client-side need to have Blueprint prefix included
             const r = await fetch('/simon/init', {method: 'GET'})
             const data = await r.json()
@@ -43,7 +46,6 @@
         }
 
         async function show_sequence() {
-            disable_squares()
             document.getElementById('status').textContent = 'Watch closely...' 
             await new Promise(r => setTimeout(r, wait_time))
             
@@ -57,14 +59,16 @@
             enable_squares()
         }
 
-        // the only method that POSTs data to server.
         // acts like a webhook by sending data to server at every event
         // attacker could modify data but it doesn't really matter bc
         // the server only accepts colours that it expects, and
         // you cant modify any of the state vars.
         // status: game_over, continue, next (turn)
         async function verify_choice(colour) {
-            // header tells server how to read data
+            const now = Date.now()
+            if (now - prev_click_time < 0.3) return
+            prev_click_time = now
+
             const r = await fetch('/simon/verify', {
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
@@ -104,7 +108,6 @@
 
         // ------------------  main ----------------------
         window.onload = async function() {
-            disable_squares()
             await init()
         }
         
