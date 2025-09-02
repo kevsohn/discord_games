@@ -1,39 +1,25 @@
+<html lang="en">
 <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Simon Says</title>
-    <style>
-        #squares {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            width: 200px;
-            height: 200px;
-        }
-        .colour {
-            pointer-events: none;
-            opacity: 0.5;
-        }
-        .colour.on {
-            pointer-events: auto;
-            opacity: 0.7;
-        }
-        .colour.flash {
-            opacity: 1;
-        }
-    </style>
+    <link rel='stylesheet' href="{{ url_for('static', filename='simon.css') }}">
 </head>
 
 <body>
     <h1>Simon Says...</h1>
-    <div id='status'>Click 'Start' to play!</div>
-    <div id='squares'>
-        <div class='colour' id='r' style='background: red;'></div>
-        <div class='colour' id='g' style='background: green;'></div>
-        <div class='colour' id='b' style='background: blue;'></div>
-        <div class='colour' id='o' style='background: orange;'></div>
+    <div class='wrap'>
+        <div id='status'> </div>
+        <div id='squares'>
+            <div class='colour' id='r' style='background: red;'></div>
+            <div class='colour' id='g' style='background: green;'></div>
+            <div class='colour' id='b' style='background: blue;'></div>
+            <div class='colour' id='o' style='background: orange;'></div>
+        </div>
+        <button id='start'>Start</button>
+        <div id='score-base'>Score: <span id='score'> </span></div>
+        <div id='hscore-base'>High Score: <span id='hscore'> </span></div>
     </div>
-    <button id='start'>Start</button>
-    <div id='score'>Score: 0</div>
-    <div id='highscore'>High Score:</div>
 
     <script>
         // the class attribute is a group identifier and
@@ -42,12 +28,17 @@
         const flash_time = 200  // ms
         const wait_time = 1000  // ms
 
-        async function start() {
+        async function init() {
             // urls on client-side need to have Blueprint prefix included
-            const resp = await fetch('/simon/start', {method: 'GET'})
-            const data = await resp.json()
-            document.getElementById('score').textContent = 'Score: 0'
-            document.getElementById('highscore').textContent = `High Score: ${data.highscore}`
+            const r = await fetch('/simon/init', {method: 'GET'})
+            const data = await r.json()
+            document.getElementById('status').textContent = 'Click "Start" to play!'
+            document.getElementById('score').textContent = '0'
+            document.getElementById('hscore').textContent = `${data.hscore}`
+        }
+
+        async function start() {
+            await init()
             await show_sequence()
         }
 
@@ -56,8 +47,8 @@
             document.getElementById('status').textContent = 'Watch closely...' 
             await new Promise(r => setTimeout(r, wait_time))
             
-            const resp = await fetch('/simon/sequence', {method: 'POST'})
-            const data = await resp.json()
+            const r = await fetch('/simon/get_sequence', {method: 'POST'})
+            const data = await r.json()
             for (const colour of data.sequence) {
                 await flash(colour)
                 await new Promise(r => setTimeout(r, flash_time))
@@ -74,22 +65,24 @@
         // status: game_over, continue, next (turn)
         async function verify_choice(colour) {
             // header tells server how to read data
-            const resp = await fetch('/simon/verify', {
+            const r = await fetch('/simon/verify', {
                 method: 'POST', 
                 headers: {'Content-Type': 'application/json'}, 
                 body: JSON.stringify({choice: colour})
             })
-            const data = await resp.json()
+            const data = await r.json()
 
             if (data.status == 'game_over') {
                 disable_squares()
                 document.getElementById('status').textContent = 'Game Over'
-                document.getElementById('score').textContent = `Final Score: ${data.final}`
-                document.getElementById('highscore').textContent = `High Score: ${data.highscore}`
+                document.getElementById('score').textContent = `${data.score}`
+                document.getElementById('hscore').textContent = `${data.hscore}`
+                return
             }
-            else if (data.status == 'continue') {
-                document.getElementById('score').textContent = `Score: ${data.score}`
+            if (data.status == 'continue') {
+                document.getElementById('score').textContent = `${data.score}`
                 await show_sequence()
+                return
             }
         }
 
@@ -110,8 +103,13 @@
         }
 
         // ------------------  main ----------------------
-        disable_squares()
+        window.onload = async function() {
+            disable_squares()
+            await init()
+        }
+        
         document.getElementById('start').addEventListener('click', start)
+        
         // forEach returns the element, not its id
         squares.forEach(colour => {
             // need to have async inside listener if fns are async

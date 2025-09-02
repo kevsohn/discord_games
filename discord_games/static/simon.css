@@ -1,9 +1,54 @@
+html, body {
+    margin-top: 10px;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    text-align: center;
+    margin: 30 0 0 0;
+    font-weight: bold;
+}
+
+.wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#status {
+    font-size: 18px;
+    padding: 4px;
+}
+
 #squares {
     display: grid;
     grid-template-columns: 1fr 1fr;
     width: 200px;
     height: 200px;
-    gap: 10px;
+    gap: 5px;
+}
+
+#start {
+    cursor: pointer; 
+    width: 60px;
+    height: 30px;
+    font-size: 14px;
+    margin: 6px 0 6px 0;
+    /* center content inside */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* rounded corners */
+    border-radius: 12px;
+}
+/* runs when clicked */
+#start:active {
+    transform: scale(0.95);
 }
 
 .colour {
@@ -17,4 +62,3 @@
 .colour.flash {
     opacity: 1;
 }
-

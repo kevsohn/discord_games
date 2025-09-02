@@ -33,15 +33,15 @@ def reset_state():
 # POST for modifying requests, aka REST principle
 # reason: clients can meddle with the state by modifying params in the url,
 # not that POST is infallable since all the info is still visible to men-in-the-middle
-@simon_bp.route('/start', methods=['GET'])
-def start():
+@simon_bp.route('/init', methods=['GET'])
+def init():
     reset_state()
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
-    return jsonify(highscore=session['hscore'][gid])
+    return jsonify(hscore=session['hscore'][gid])
 
 
 # the current score gives the max turn num
-@simon_bp.route('/sequence', methods=['POST'])
+@simon_bp.route('/get_sequence', methods=['POST'])
 def get_sequence():
     seq = session['sequence']
     score = session['score'][gid]
@@ -66,7 +66,7 @@ def verify_choice():
             db_utils.update_hscore(hscore, session['id'], gid)
         # update daily score
         db_utils.update_score(score, session['id'], gid)
-        return jsonify(status='game_over', highscore=hscore, final=score)
+        return jsonify(status='game_over', hscore=hscore, score=score)
     # success
     turn_num += 1
     # if last possible turn, continue to next round
