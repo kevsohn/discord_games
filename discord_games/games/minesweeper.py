@@ -26,6 +26,7 @@ def reset_state():
     session['revealed'] = [[False for _ in range(ndim)] for _ in range(ndim)]
     session['flagged'] = [[False for _ in range(ndim)] for _ in range(ndim)]
     session['nflags'] = nmines
+    session['in_progress'] = False
 
 
 def gen_mines(nmines, ndim, safe_tile):
@@ -92,6 +93,7 @@ def init():
 
 @mines_bp.route('/start', methods=['POST'])
 def start():
+    session['in_progress'] = True
     # start tile is always safe
     safe_tile = tuple(request.json.get('choice'))
     session['mines'] = gen_mines(nmines, ndim, safe_tile)
@@ -101,6 +103,9 @@ def start():
 
 @mines_bp.route('/verify', methods=['POST'])
 def verify():
+    if not session['in_progress']:
+        return
+
     choice = request.json.get("choice")
     if not isinstance(choice, list) or len(choice) != 2:
         return jsonify(error="Coordinate must be a list of size 2"), 400
@@ -116,6 +121,7 @@ def verify():
         return jsonify(status='flagged')
 
     if (i,j) in session['mines']:
+        session['in_progress'] = False
         # reveal all mines
         return jsonify(status='game_over', mines=session['mines'])
 
@@ -131,6 +137,7 @@ def verify():
     ]
     # check win after revealing
     if won(board, revealed):
+        session['in_progress'] = False
         return jsonify(status='won', revealed=revealed_tiles, score=nmines)
     return jsonify(status='continue', revealed=revealed_tiles)
 

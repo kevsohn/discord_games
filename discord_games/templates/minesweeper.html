@@ -25,8 +25,7 @@
     <script>
         // game vars
         const gap_size = 4 // px
-        let game_over = true
-        let nflags = 0
+        let in_progress
 
         // timer vars
         const max_time = 999 // secs
@@ -35,6 +34,7 @@
 
         // --------------------- game logic --------------------------
         async function init() {
+            in_progress = false
             const r = await fetch('/minesweeper/init', {method: 'GET'})
             const data = await r.json()
             document.getElementById('hscore').textContent = `${data.hscore}`
@@ -82,7 +82,6 @@
         async function reset() {
             await init()
             reset_timer()
-            game_over = true
         }
         
         function start(i, j) {
@@ -92,6 +91,7 @@
                 body: JSON.stringify({choice: [i,j]})
             })
             start_timer()
+            in_progress = true
         }
         
         async function verify(i, j) {
@@ -104,7 +104,6 @@
             
             if (data.status == 'flagged') return
             if (data.status == 'game_over') {
-                game_over = true
                 stop_timer()
                 let score = reveal_mines(data.mines)
                 update(score) 
@@ -113,7 +112,6 @@
                 return
             }
             if (data.status == 'won') {
-                game_over = true
                 stop_timer()
                 update(data.score) 
                 document.getElementById('score').textContent = `${data.score}`
@@ -129,8 +127,8 @@
             const j = Number(tile.dataset.col)
            
             // start tile is always safe
-            if (game_over) {
-                game_over = false
+            if (!in_progress) {
+                in_progress = true
                 await start(i, j)
             }
             // tiles to reveal
