@@ -26,12 +26,12 @@
         // querySelectorAll returns all elems as a NodeList
         const squares = document.querySelectorAll('.colour')
         // game params
-        const flash_time = 200  // ms
-        const wait_time = 800  // ms
-        let prev_click_time = 0
+        const flash_time = 200 // ms
+        const wait_time = 800 // ms
+        const rate_lim = 50 // ms
+        let prev_click_time = 0 // ms
 
         async function init() {
-            disable_squares()
             // urls on client-side need to have Blueprint prefix included
             const r = await fetch('/simon/init', {method: 'GET'})
             const data = await r.json()
@@ -46,6 +46,7 @@
         }
 
         async function show_sequence() {
+            disable_squares()
             document.getElementById('status').textContent = 'Watch closely...' 
             await new Promise(r => setTimeout(r, wait_time))
             
@@ -66,7 +67,7 @@
         // status: game_over, continue, next (turn)
         async function verify_choice(colour) {
             const now = Date.now()
-            if (now - prev_click_time < 0.3) return
+            if (now - prev_click_time < rate_lim) return
             prev_click_time = now
 
             const r = await fetch('/simon/verify', {
@@ -108,6 +109,7 @@
 
         // ------------------  main ----------------------
         window.onload = async function() {
+            disable_squares()
             await init()
         }
         
