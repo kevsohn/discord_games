@@ -1,0 +1,139 @@
+/* ---------------- root colors ---------------- */
+:root {
+    --bg: #c0c0c0;
+    --panel: #c0c0c0;
+    --tile-bg: #c0c0c0;
+    --tile-reveal: #dcdcdc;
+    --border-light: #ffffff;
+    --border-dark: #808080;
+    --border-verydark: #000000;
+    --tile-size: 24px;
+}
+
+/* ---------------- general layout ---------------- */
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    font-family: Tahoma, sans-serif;
+    user-select: none;
+}
+
+h1 {
+    text-align: center;
+    margin: 30 0 8 0;
+    font-weight: bold;
+}
+
+.legend { 
+    text-align: center; 
+    margin-top: 8px; 
+}
+
+.scores {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 4px;
+    font-size: 18px;
+}
+
+.wrap {
+    width: fit-content;
+    margin: 10px auto;
+    padding: 8px;
+    border: 2px solid var(--border-dark);
+    border-right-color: var(--border-light);
+    border-bottom-color: var(--border-light);
+    background: var(--panel);
+}
+
+/* ---------------- controls bar ---------------- */
+.controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 6px;
+    margin-bottom: 4px;
+    border: 2px solid var(--border-dark);
+    border-right-color: var(--border-light);
+    border-bottom-color: var(--border-light);
+    background: var(--panel);
+}
+
+.counter {
+    background: black;
+    color: red;
+    font-family: "Digital-7 Mono", monospace;
+    font-size: 24px;
+    width: 50px;
+    text-align: center;
+    padding: 2px 4px;
+    border: 2px inset #808080;
+}
+
+#reset {
+    width: 32px;
+    height: 32px;
+    font-size: 26px;
+    border: 2px solid var(--border-dark);
+    border-right-color: var(--border-light);
+    border-bottom-color: var(--border-light);
+    background: var(--panel);
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+#reset:active {
+    border: 2px solid var(--border-light);
+    border-right-color: var(--border-dark);
+    border-bottom-color: var(--border-dark);
+}
+
+/* ---------------- grid ---------------- */
+.grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols), var(--tile-size));
+    gap: 0; /* tightly packed tiles */
+    background: var(--panel);
+    border: 2px solid var(--border-dark);
+    border-right-color: var(--border-light);
+    border-bottom-color: var(--border-light);
+}
+
+/* ---------------- tiles ---------------- */
+.tile {
+    width: var(--tile-size);
+    height: var(--tile-size);
+    font-weight: bold;
+    font-size: 16px;
+    text-align: center;
+    line-height: 24px;
+    cursor: pointer;
+    background: var(--tile-bg);
+    border: 2px solid var(--border-dark);
+    border-right-color: var(--border-light);
+    border-bottom-color: var(--border-light);
+    padding: 0;
+}
+.tile.reveal {
+    background: var(--tile-reveal);
+    border: 1px solid var(--border-dark);
+    cursor: default;
+}
+.tile.flag::after {
+    content: "🚩";
+    font-size: 16px;
+}
+
+/* ---------------- number colors ---------------- */
+.num1 { color: blue; }
+.num2 { color: green; }
+.num3 { color: red; }
+.num4 { color: navy; }
+.num5 { color: maroon; }
+.num6 { color: teal; }
+.num7 { color: black; }
+.num8 { color: gray; }
+
