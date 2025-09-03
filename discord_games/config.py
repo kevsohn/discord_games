@@ -5,8 +5,11 @@ from secrets import token_urlsafe
 # exports .env variables
 load_dotenv()
 
-# for discord
+# for bot
 BOT_TOKEN = environ.get('BOT_TOKEN')
+CMD_PREFIX = '!'
+
+# for discord
 CLIENT_ID = environ.get('CLIENT_ID')
 CLIENT_SECRET = environ.get('CLIENT_SECRET')
 API_ENDPOINT = 'https://discord.com/api/v10'
@@ -22,7 +25,6 @@ GAMES = {
         'simon': 2,
         'num_guess': 3
 }
-
 # adjustable game params
 MINESWEEPER = {
         'ndim': 8,

@@ -1,59 +1,36 @@
-import requests
 import asyncio
+import os
 
 import discord
 from discord.ext import commands
 
 import config
 
-# need to allow matching intents on the bot admin page
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
 
-client = discord.Client(intents=intents)
+class Simon(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        # need to allow matching intents on the bot admin page
+        intents.message_content = True
+        intents.members = True
+        description = 'Minigame Gauntlet Bot'
+        super().__init__(command_prefix=config.CMD_PREFIX, intents=intents, description=description)
 
+    async def setup_hook(self):
+        # load cogs automatically
+        for filename in os.listdir('./cogs'):
+            if filename.endswith('.py'):
+                await self.load_extension(f'cogs.{filename[:-3]}')
 
-@client.event
-async def on_ready():
-    print(f'Logged in as {client.user}')
-
-
-@client.event
-async def on_message(message):
-    # so bot doesn't respond to itself
-    if message.author == client.user:
-        return
-
-    if message.content.lower().startswith('!simon'):
-        embed = discord.Embed(title="🎮 Simon Says...",
-                              description="Click the link below to start:",
-                              color=0x00ff00)
-        embed.add_field(name="Game Link",
-                        value=f"[Play Now]({config.BASE_URL}/login)",
-                        inline=False)
-        await message.reply(embed=embed)
-        return
-
-    if message.content.lower().startswith('!rankings'):
-        rankings = get_rankings()
-        await message.reply(f'resp: {rankings}')
-        return
+    async def on_ready(self):
+        print(f"🤖 Logged in as {self.user} ({self.user.id})")
 
 
-# ping everyone after 24hrs from the first "play" announcing winners and asking to play now
-# the first time the bot gets called into the server, set the announcement time 24h from this time
-# then, run a background job to check every hour if 24h passed, and announce leaders for the day
-# and reset time
-def get_rankings():
-    r = requests.get(f"{config.BASE_URL}/api/rankings", verify=False).json()
-    if r['rankings'] is None:
-        return
-    return r['rankings']
+async def main():
+    bot = Simon()
+    await bot.start(config.BOT_TOKEN)
 
 
-client.run(config.BOT_TOKEN)
-
-
-
+if __name__ == "__main__":
+    asyncio.run(main())
 

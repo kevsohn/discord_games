@@ -29,6 +29,7 @@ def reset_state():
     session['in_progress'] = False
 
 
+# generate mine coords excluding start tile
 def gen_mines(nmines, ndim, safe_tile):
     coords = [(i,j) for i in range(ndim) for j in range(ndim)]
     coords.remove(safe_tile)
@@ -56,19 +57,28 @@ def init_board(mines, board, revealed):
     print_board(board, ndim)
 
 
-# flood reveal
-def reveal(i, j, board, revealed, flagged):
+# score == nmines correctly flagged
+def reveal_mines(mines, flagged):
+    score = 0
+    for (i,j) in mines:
+        if flagged[i][j]:
+            score += 1
+    return score
+
+
+# flood reveal empty tiles (no neighbouring mines)
+def flood_reveal(i, j, board, revealed, flagged):
     # do nothing if already revealed or flagged
     if revealed[i][j] or flagged[i][j]:
         return
     revealed[i][j] = True
-    # '0' is empty tile (i.e. no mines in nghbrhood)
+    # '0' is empty tile
     if board[i][j] == 0:
         for r in range(max(i-1, 0), min(i+2, ndim)):
             for c in range(max(j-1, 0), min(j+2, ndim)):
                 if r == i and c == j:
                     continue
-                reveal(r, c, board, revealed, flagged)
+                flood_reveal(r, c, board, revealed, flagged)
 
 
 # only need to check if all non-mine tiles are revealed
@@ -88,23 +98,25 @@ def won(board, revealed):
 def init():
     reset_state()
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
+    print(ndim)
     return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'], ndim=ndim)
 
 
 @mines_bp.route('/start', methods=['POST'])
 def start():
-    session['in_progress'] = True
     # start tile is always safe
     safe_tile = tuple(request.json.get('choice'))
     session['mines'] = gen_mines(nmines, ndim, safe_tile)
+    session['in_progress'] = True
     init_board(session['mines'], session['board'], session['revealed'])
-    return jsonify(status='success')
+    return jsonify(None)
 
 
 @mines_bp.route('/verify', methods=['POST'])
 def verify():
+    # stop responding after gg
     if not session['in_progress']:
-        return
+        return jsonify(status='finished')
 
     choice = request.json.get("choice")
     if not isinstance(choice, list) or len(choice) != 2:
@@ -116,39 +128,47 @@ def verify():
 
     # order matters!
     flagged = session['flagged']
+    # clicked flag, do nothing
     if flagged[i][j]:
-        # do nothing
         return jsonify(status='flagged')
 
-    if (i,j) in session['mines']:
+    # clicked mine, game over
+    mines = session['mines']
+    if (i,j) in mines:
         session['in_progress'] = False
-        # reveal all mines
-        return jsonify(status='game_over', mines=session['mines'])
+        score = reveal_mines(mines, flagged)
+        return jsonify(status='game_over', mines=mines, score=score)
 
     # else, flood reveal all non-mine tiles EXCEPT flagged ones
     board = session['board']
     revealed = session['revealed']
-    reveal(i, j, board, revealed, flagged)
+    flood_reveal(i, j, board, revealed, flagged)
     revealed_tiles = [
         {"r": i, "c": j, "num": board[i][j]}
         for i, row in enumerate(revealed)
         for j, is_revealed in enumerate(row)
         if is_revealed
     ]
+
     # check win after revealing
     if won(board, revealed):
         session['in_progress'] = False
         return jsonify(status='won', revealed=revealed_tiles, score=nmines)
+
     return jsonify(status='continue', revealed=revealed_tiles)
 
 
 @mines_bp.route('/flag', methods=['POST'])
-def flag():
-    tile = request.json.get("tile")
-    if not isinstance(tile, list) or len(tile) != 2:
+def toggle_flag():
+    # stop responding after gg
+    if not session['in_progress']:
+        return jsonify(status='finished')
+
+    choice = request.json.get("choice")
+    if not isinstance(choice, list) or len(choice) != 2:
         return jsonify(error="Coordinate must be a list of size 2"), 400
     try:
-        i,j = map(int, tile)  # ensure coordinates are integers
+        i,j = map(int, choice)  # ensure coordinates are integers
     except ValueError:
         return jsonify(error="Coordinate must be a pair of integers"), 400
 
@@ -172,7 +192,6 @@ def flag():
 
 @mines_bp.route('/update', methods=['POST'])
 def update_scores():
-    # score == num of mines flagged correctly
     score = request.json.get('score')
     if score > session['hscore'][gid]:
         db_utils.update_hscore(score, session['id'], gid)

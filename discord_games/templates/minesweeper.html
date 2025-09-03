@@ -24,49 +24,62 @@
 
     <script>
         // game vars
-        const gap_size = 4 // px
-        let in_progress
+        let in_progress = false
 
         // timer vars
         const max_time = 999 // secs
         let elapsed_t = 0
         let timer_id = null
 
+
         // --------------------- game logic --------------------------
         async function init() {
-            in_progress = false
             const r = await fetch('/minesweeper/init', {method: 'GET'})
             const data = await r.json()
-            document.getElementById('hscore').textContent = `${data.hscore}`
-            document.getElementById('score').textContent = '0'
-            document.getElementById('nflags').textContent = `${data.nflags}`
-            document.getElementById('timer').textContent = String(0).padStart(3, '0')
-            document.getElementById('reset').textContent = '🙂'
+            console.log(data.ndim)
             await create_grid(data.ndim)
+            
+            document.getElementById('nflags').textContent = `${data.nflags}`
+            document.getElementById('reset').textContent = '🙂'
+            document.getElementById('score').textContent = '0'
+            document.getElementById('hscore').textContent = `${data.hscore}`
+
+            reset_timer()
+            in_progress = false
         }
-        
-        async function create_grid(n) {
+
+        // just tells server to init board w/o mine in start tile
+        async function start(i, j) {
+            await fetch('/minesweeper/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({choice: [i,j]})
+            })
+            start_timer()
+            in_progress = true
+        }
+
+
+        async function create_grid(ndim) {
             // update CSS variables for layout
             const grid = document.getElementById('grid')
-            grid.style.setProperty('--cols', n)
-            grid.style.setProperty('--size', n)
-            grid.style.setProperty('--gap', gap_size + 'px')
+            grid.style.setProperty('--cols', ndim)
             grid.innerHTML = ''
+           
             // fill grid w/ buttons 
-            for (let r = 0; r < n; r++) {
-                for (let c = 0; c < n; c++) {
+            for (let r=0; r<ndim; r++) {
+                for (let c=0; c<ndim; c++) {
                     const tile = document.createElement('button')
                     tile.className = 'tile'
                     tile.dataset.row = r
                     tile.dataset.col = c
                     
-                    // show coordinates on middle-click (auxclick)
+                    // show coords on hover
                     tile.title = `(${r}, ${c})`
-                    
                     // left click: reveal
                     tile.addEventListener('click', async (e) => {
                         e.preventDefault()
-                        await reveal_tiles(tile)
+                        await verify(tile)
                     });
                     // right click: flag
                     tile.addEventListener('contextmenu', async (e) => {
@@ -78,23 +91,17 @@
                 }
             }
         }
+        
 
-        async function reset() {
-            await init()
-            reset_timer()
-        }
-        
-        function start(i, j) {
-            fetch('/minesweeper/start', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({choice: [i,j]})
-            })
-            start_timer()
-            in_progress = true
-        }
-        
-        async function verify(i, j) {
+        async function verify(tile) {
+            const i = Number(tile.dataset.row)
+            const j = Number(tile.dataset.col)
+            
+            // if 1st tile to be clicked, start
+            // start tile is always safe
+            if (!in_progress)
+                await start(i, j)
+
             const r = await fetch('/minesweeper/verify', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -102,97 +109,86 @@
             })
             const data = await r.json()
             
-            if (data.status == 'flagged') return
-            if (data.status == 'game_over') {
-                stop_timer()
-                let score = reveal_mines(data.mines)
-                update(score) 
-                document.getElementById('score').textContent = `${score}`
-                document.getElementById('reset').textContent = '😵'
+            // do nothing if tile is flagged or game finished
+            if (data.status == 'flagged' || data.status == 'finished') 
+                return
+            if (data.status == 'continue') {
+                reveal_tiles(data.revealed)
                 return
             }
+            // else, game won or over
+            stop_timer()
+            update(data.score) 
+            // if won, reveal tiles as usual
             if (data.status == 'won') {
-                stop_timer()
-                update(data.score) 
-                document.getElementById('score').textContent = `${data.score}`
+                reveal_tiles(data.revealed)
                 document.getElementById('reset').textContent = '😎'
-                return data.revealed
+                return
             }
-            return data.revealed
+            // if over, reveal all mines unless correctly flagged
+            reveal_mines(data.mines)
+            document.getElementById('reset').textContent = '😵'
         }
         
 
-        async function reveal_tiles(tile) {
-            const i = Number(tile.dataset.row)
-            const j = Number(tile.dataset.col)
-           
-            // start tile is always safe
-            if (!in_progress) {
-                in_progress = true
-                await start(i, j)
-            }
-            // tiles to reveal
-            // excludes tiles already revealed or flagged
-            const revealed = await verify(i, j)
-            // only true if flagged or game over
-            if (revealed == null) return
-            revealed.forEach(t_info => {
-                const t = document.querySelector(`.tile[data-row="${t_info.r}"][data-col="${t_info.c}"]`)
-                reveal_tile(t, Number(t_info.num))
+        // tiles input already excludes revealed or flagged
+        function reveal_tiles(tiles) {
+            tiles.forEach(tile => {
+                const e = document.querySelector(`.tile[data-row="${tile.r}"][data-col="${tile.c}"]`)
+                e.classList.add('reveal')
+                // only show num if non-empty tile
+                e.textContent = tile.num === 0 ? '' : tile.num
+                // assign preset colour to num
+                if (tile.num > 0) 
+                    e.classList.add('num'+tile.num)
             })
         }
-        
-        function reveal_tile(tile, num) {
-            // do nothing if already revealed or flagged
-            if (tile.classList.contains('reveal') || tile.classList.contains('flag')) return
-            tile.classList.add('reveal')
-            // only show num if non-empty tile
-            tile.textContent = num === 0 ? '' : num
-            // assign preset colour to num
-            if (num > 0) tile.classList.add('num'+num)
-        }
-        
+
+
         function reveal_mines(mines) {
-            let score = 0
-            mines.forEach(tile => {
-                const mine = document.querySelector(`.tile[data-row="${tile[0]}"][data-col="${tile[1]}"]`)
-                // if mine correctly flagged, +1 score
-                // flag is already toggled
-                if (mine.classList.contains('flag')) 
-                    score++
-                else 
-                    mine.textContent = '💣'
-                mine.classList.add('reveal')
+            mines.forEach(mine => {
+                const e = document.querySelector(`.tile[data-row="${mine[0]}"][data-col="${mine[1]}"]`)
+                // if already flagged, dont override w/ mine
+                if (!e.classList.contains('flag')) {
+                    e.textContent = '💣'
+                    e.classList.add('reveal')
+                }
             })
-            return score
         }
-        
+
+
         async function toggle_flag(tile) {
             // cant flag a revealed tile 
-            if (tile.classList.contains('reveal')) return
+            if (tile.classList.contains('reveal')) 
+                return
+
             // ensure indices are ints
             const i = Number(tile.dataset.row)
             const j = Number(tile.dataset.col)
             const r = await fetch('/minesweeper/flag', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({tile: [i, j]})
+                body: JSON.stringify({choice: [i, j]})
             })
             const data = await r.json()
             
             // only true if nflags = 0
             if (!data.toggle) return
+
             tile.classList.toggle('flag')
             document.getElementById('nflags').textContent = `${data.nflags}`
         }
 
+        
         function update(score) {
             fetch('/minesweeper/update', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({score: score})
             })
+            document.getElementById('score').textContent = `${score}`
         }
+        
         
         // --------------------- timer ------------------------
         function start_timer() {
@@ -216,16 +212,16 @@
         function reset_timer() {
             stop_timer()
             elapsed_t = 0
+            document.getElementById('timer').textContent = String(0).padStart(3, '0')
         }
+        
         
         // ------------------------ init -------------------------------
         window.onload = async function() {
             await init()
+            document.getElementById('reset').addEventListener('click', init)
         }
 
-        document.getElementById('reset').addEventListener('click', async () => {
-            await reset()
-        })
     </script>
 </body>
 </html>
