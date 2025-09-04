@@ -317,7 +317,7 @@ def init_reset_time():
             on conflict (id) do nothing;
         """)
         conn.commit()
-    return None
+    return jsonify(None)
 
 
 # discord bot has a background scheduler that pings every hour

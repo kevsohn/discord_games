@@ -16,12 +16,13 @@ class Minigames(commands.Cog):
 
 
     @commands.command(name="play")
-    async def link_games(self, ctx):
+    async def play(self, ctx):
         """
         Command format: !play
         """
         # use aiohttp instead of requests bc async lib
         async with aiohttp.ClientSession() as sesh:
+            # remember to rm ssl=False once deployed
             async with sesh.get(f"{self.API_URL}/init_reset_time", ssl=False) as r:
                 pass
 
@@ -35,8 +36,8 @@ class Minigames(commands.Cog):
                 value=f"[Play Now]({config.BASE_URL}/login)",
                 inline=False
         )
-        await ctx.message.delete()  # delete cmd msg
         await ctx.reply(embed=embed)
+        #await ctx.message.remove()
 
 
     async def announce_rankings(self):
@@ -67,8 +68,8 @@ class Minigames(commands.Cog):
 
 
     async def fetch_rankings(self):
-        # use aiohttp instead of requests bc async lib
         async with aiohttp.ClientSession() as sesh:
+            # remember to rm ssl=False once deployed
             async with sesh.get(f"{self.API_URL}/rankings", ssl=False) as r:
                 if r.status == 200:
                     data = await r.json()
