@@ -14,12 +14,12 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('mines').addEventListener('click', () => {
-                window.location.href = '{{ url_for('play', game='minesweeper') }}'
+                window.location.href = '{{ url_for('play', game_id='minesweeper') }}'
             })
         })
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('simon').addEventListener('click', () => {
-                window.location.href = '{{ url_for('play', game='simon') }}'
+                window.location.href = '{{ url_for('play', game_id='simon') }}'
             })
         })
     </script>

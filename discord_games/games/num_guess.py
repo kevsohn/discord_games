@@ -6,14 +6,12 @@ import config
 import db
 import db_utils
 
-# globals
-game = path.splitext(path.basename(__file__))[0]
-gid = config.GAMES[game]
-
-guess_bp = Blueprint(f'{game}', __name__, url_prefix=f'/{game}')
+# game id
+gid = path.splitext(path.basename(__file__))[0]
+guess_bp = Blueprint(f'{gid}', __name__, url_prefix=f'/{gid}')
 
 # game params
-max_turn = config.GUESS['max_turn']
+max_turn = config.NUM_GUESS['max_score']
 
 
 # --------------- helper ------------------

@@ -18,7 +18,7 @@ class Simon(commands.Bot):
 
     async def setup_hook(self):
         # load cogs automatically
-        for filename in os.listdir('./cogs'):
+        for filename in os.listdir(os.path.join(os.path.dirname(__file__), 'cogs')):
             if filename.endswith('.py'):
                 await self.load_extension(f'cogs.{filename[:-3]}')
 

@@ -65,14 +65,17 @@ with app.app_context():
                 );
             """)
             # game_id: i.e. 'simon', 'minesweeper', etc
-            # hscore: all-time high score/game (IS NULL TO BE INIT'D)
-            # score: daily scores/game that reset every 24h
+            # max_score: max possible score per game
+            # score: daily score that resets every 24h
+            # hscore: all-time high score (IS NULL TO BE INIT'D)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS scores (
                     player_id BIGINT REFERENCES players(id),
-                    game_id INT NOT NULL,
-                    hscore INT,
+                    game_id TEXT NOT NULL,
                     score INT DEFAULT 0,
+                    hscore INT,
+                    max_score INT NOT NULL,
+                    rank_order TEXT NOT NULL,
                     PRIMARY KEY (player_id, game_id)
                  );
             """)
@@ -256,29 +259,27 @@ def home():
 
 
 # <param> is required in the route to be captured
-@app.route('/play/<game>', methods=['GET'])
-def play(game):
-    if game not in app.config['GAMES']:
+@app.route('/play/<game_id>', methods=['GET'])
+def play(game_id):
+    if game_id not in app.config['GAMES']:
         return 'Game not found', 404
     # 1st person to play any game inits daily reset time
-    init_reset_time()
-    init_scores(game)
-    init_hscores(game)
-    init_scores_db(session['id'], game)
-    return render_template(f'{game}.html')
+    #init_reset_time()
+    init_scores(game_id)
+    init_hscores(game_id)
+    init_scores_db(session['id'], game_id)
+    return render_template(f'{game_id}.html')
 
 
 # init 2d session vars since not auto
-def init_scores(game):
-    game_id = app.config['GAMES'][game]
+def init_scores(game_id):
     if 'score' not in session:
         session['score'] = {}
     if game_id not in session['score']:
         session['score'][game_id] = {}
 
 
-def init_hscores(game):
-    game_id = app.config['GAMES'][game]
+def init_hscores(game_id):
     if 'hscore' not in session:
         session['hscore'] = {}
     if game_id not in session['hscore']:
@@ -287,15 +288,18 @@ def init_hscores(game):
 
 # to ensure player and game id is registered for any api calls
 # hscore is None b/c not init
-def init_scores_db(id, game):
+def init_scores_db(player_id, game_id):
     conn = db.get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                insert into scores (player_id, game_id)
-                values (%s, %s)
+                insert into scores (player_id, game_id, max_score, rank_order)
+                values (%s, %s, %s, %s)
                 on conflict (player_id, game_id) do nothing;
-            """, (id, app.config['GAMES'][game]))
+            """, (player_id, game_id,
+                  app.config[game_id.upper()]['max_score'],
+                  app.config[game_id.upper()]['rank_order'])
+            )
         conn.commit()
     finally:
         db.close_conn()
@@ -303,18 +307,17 @@ def init_scores_db(id, game):
 
 # =================================== API ===================================
 # UPSERT reset time
+@app.route('/api/init_reset_time')
 def init_reset_time():
     conn = db.get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                insert into reset_time (id, time)
-                values (1, now() + interval '5 seconds')
-                on conflict (id) do nothing;
-            """)
-            conn.commit()
-    finally:
-        db.close_conn()
+    with conn.cursor() as cur:
+        cur.execute("""
+            insert into reset_time (id, time)
+            values (1, now() + interval '5 seconds')
+            on conflict (id) do nothing;
+        """)
+        conn.commit()
+    return None
 
 
 # discord bot has a background scheduler that pings every hour
@@ -322,32 +325,51 @@ def init_reset_time():
 @app.route('/api/rankings')
 def get_daily_rankings():
     conn = db.get_conn()
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("select time from reset_time;")
-        reset_t = cur.fetchone()[0]
-        # should be non-none from init_reset_time() but just in case
-        if reset_t is None:
-            return jsonify(error='Reset time not initialized')
+        row = cur.fetchone()
 
-        # do nothing if not yet reset time
-        if datetime.now(timezone.utc) < reset_t:
+        if row is None:
+            # to standardize output
+            return jsonify(rankings=None)
+        # if not yet reset time
+        if datetime.now(timezone.utc) < row['time']:
             return jsonify(rankings=None)
 
-        # get rankings and update reset_t
-        # SQL returns scores/game
-        cur.execute("""
-            select username, game_id, score
-            from players p join scores s
-            on p.id = s.player_id
-            order by game_id asc, score desc;
-        """)
-        rows = cur.fetchall()
+        # get rankings and update reset time
         cur.execute("""
             update reset_time
             set time = now() + interval '5 seconds';
         """)
         conn.commit()
+        # SQL returns scores/game
+        cur.execute("""
+            select
+                game_id,
+                player_id,
+                score,
+                max_score,
+                dense_rank() over (
+                    partition by game_id
+                    order by
+                        case
+                            when rank_order = 'asc' then score
+                            else -score
+                        end
+                )
+            from scores;
+        """)
+        rows = cur.fetchall()
+
         return jsonify(rankings=rows)
+
+
+def get_max_scores():
+    return {
+            'minesweeper': config.MINESWEEPER['nmines'],
+            'simon': config.SIMON['max_seq'],
+            'num_guess': config.NUM_GUESS['max_turn']
+            }
 
 
 #=============================== MAIN ================================

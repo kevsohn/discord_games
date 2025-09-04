@@ -1,6 +1,5 @@
 import asyncio
 import aiohttp
-from datetime import datetime, timezone, timedelta
 
 import discord
 from discord.ext import commands
@@ -11,7 +10,7 @@ import config
 class Minigames(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.API_URL = config.BASE_URL+'/api'
+        self.API_URL = f'{config.BASE_URL}/api'
         # start background reminder loop
         self.bot.loop.create_task(self.announce_rankings())
 
@@ -21,6 +20,11 @@ class Minigames(commands.Cog):
         """
         Command format: !play
         """
+        # use aiohttp instead of requests bc async lib
+        async with aiohttp.ClientSession() as sesh:
+            async with sesh.get(f"{self.API_URL}/init_reset_time", ssl=False) as r:
+                pass
+
         embed = discord.Embed(
                 title="🎮 Simon Says...",
                 description="Click the link below to start:",
@@ -31,16 +35,8 @@ class Minigames(commands.Cog):
                 value=f"[Play Now]({config.BASE_URL}/login)",
                 inline=False
         )
+        await ctx.message.delete()  # delete cmd msg
         await ctx.reply(embed=embed)
-
-
-    @commands.command(name="rankings")
-    async def get_rankings(self, ctx):
-        """
-        Command format: !rankings
-        """
-        #await ctx.message.delete()  # Delete the command message
-        #await response_message.delete()  # Delete the bot's response
 
 
     async def announce_rankings(self):
@@ -49,32 +45,31 @@ class Minigames(commands.Cog):
         """
         await self.bot.wait_until_ready()
         channel = self.bot.get_channel(config.CHANNEL_ID)
+        if channel is None:
+            channel = await self.bot.fetch_channel(config.CHANNEL_ID)
 
         while not self.bot.is_closed():
-            rankings = await fetch_rankings()
+            rankings = await self.fetch_rankings()
             if rankings is None:
-                await asyncio.sleep(60)
+                await asyncio.sleep(20)
                 continue
 
-            # change return to {username: '...', scores: ['3/nmines', ...], order: ['asc', 'desc', ...]}
-            username = rankings[0][0]
-            scores = []
-            for e in rankings:
-                scores.append(str(e[2])+'/10')
-            await channel.send(f"""
+            await channel.send(f'{rankings}')
+            '''await channel.send(f"""
                         Minesweeper:
                 {scores[0]}: <@{username}>
 
                         Simon Says:
                 {scores[1]}: <@{username}>
             """)
-            await asyncio.sleep(60)
+            '''
+            await asyncio.sleep(20)
 
 
     async def fetch_rankings(self):
         # use aiohttp instead of requests bc async lib
         async with aiohttp.ClientSession() as sesh:
-            async with sesh.get(f"{self.API_URL}/rankings") as r:
+            async with sesh.get(f"{self.API_URL}/rankings", ssl=False) as r:
                 if r.status == 200:
                     data = await r.json()
                     return data['rankings']

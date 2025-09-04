@@ -9,15 +9,13 @@ import db
 import db_utils
 
 
-# globals
-game = path.splitext(path.basename(__file__))[0]
-gid = config.GAMES[game]
-
+# game id
+gid = path.splitext(path.basename(__file__))[0]
 # Blueprints make it modular by being indep of the homepage
-simon_bp = Blueprint(f'{game}', __name__, url_prefix=f'/{game}')
+simon_bp = Blueprint(f'{gid}', __name__, url_prefix=f'/{gid}')
 
 # game params
-max_seq = config.SIMON['max_seq']
+max_seq = config.SIMON['max_score']
 colours = ["r", "g", "b", "o"]
 
 

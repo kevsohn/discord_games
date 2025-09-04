@@ -9,15 +9,13 @@ import db
 import db_utils
 
 
-# globals
-game = path.splitext(path.basename(__file__))[0]
-gid = config.GAMES[game]
-
-mines_bp = Blueprint(f'{game}', __name__, url_prefix=f'/{game}')
+# game id
+gid = path.splitext(path.basename(__file__))[0]
+mines_bp = Blueprint(f'{gid}', __name__, url_prefix=f'/{gid}')
 
 # game params
 ndim = config.MINESWEEPER['ndim']
-nmines = config.MINESWEEPER['nmines']
+nmines = config.MINESWEEPER['max_score']
 
 
 # --------------- helper ------------------
