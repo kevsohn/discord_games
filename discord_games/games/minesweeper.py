@@ -96,7 +96,6 @@ def won(board, revealed):
 def init():
     reset_state()
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
-    print(ndim)
     return jsonify(hscore=session['hscore'][gid], nflags=session['nflags'], ndim=ndim)
 
 
