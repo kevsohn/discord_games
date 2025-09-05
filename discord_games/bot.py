@@ -9,10 +9,11 @@ import config
 
 class Simon(commands.Bot):
     def __init__(self):
-        intents = discord.Intents.default()
         # need to allow matching intents on the bot admin page
+        intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
+
         description = 'Minigame Gauntlet Bot'
         super().__init__(command_prefix=config.CMD_PREFIX, intents=intents, description=description)
 

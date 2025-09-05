@@ -42,6 +42,7 @@ with app.app_context():
                 drop table if exists tokens;
                 drop table if exists scores;
                 drop table if exists players;
+                drop table if exists games;
                 drop table if exists reset_time;
             """)
             # id: discord id
@@ -57,25 +58,31 @@ with app.app_context():
                 );
             """)
             # id: discord id
-            # id: discord username
+            # username: discord username
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS players (
                     id BIGINT PRIMARY KEY,
                     username TEXT NOT NULL
                 );
             """)
-            # game_id: i.e. 'simon', 'minesweeper', etc
+            # id: game name ('simon', 'minesweeper', ...)
             # max_score: max possible score per game
+            # rank_order: 'asc' or 'desc'
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS games (
+                    id TEXT PRIMARY KEY,
+                    max_score INT NOT NULL,
+                    rank_order TEXT NOT NULL
+                 );
+            """)
             # score: daily score that resets every 24h
             # hscore: all-time high score (IS NULL TO BE INIT'D)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS scores (
-                    player_id BIGINT REFERENCES players(id),
-                    game_id TEXT NOT NULL,
+                    player_id BIGINT REFERENCES players(id) ON DELETE CASCADE,
+                    game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
                     score INT DEFAULT 0,
                     hscore INT,
-                    max_score INT NOT NULL,
-                    rank_order TEXT NOT NULL,
                     PRIMARY KEY (player_id, game_id)
                  );
             """)
@@ -97,6 +104,7 @@ with app.app_context():
 # redirects straight to discord OAuth2
 @app.route('/login')
 def login():
+    init_reset_time()
     # encoded cuz it just be like that
     encoded_url = quote(app.config['REDIR_URI'], safe="")
     # scope: whatever perms selected on the dev website
@@ -264,10 +272,9 @@ def home():
 def play(game_id):
     if game_id not in app.config['GAMES']:
         return 'Game not found', 404
-    # 1st person to play any game inits daily reset time
-    #init_reset_time()
     init_scores(game_id)
     init_hscores(game_id)
+    init_games_db(game_id)
     init_scores_db(session['id'], game_id)
     return render_template(f'{game_id}.html')
 
@@ -287,17 +294,15 @@ def init_hscores(game_id):
         session['hscore'][game_id] = {}
 
 
-# to ensure player and game id is registered for any api calls
-# hscore is None b/c not init
-def init_scores_db(player_id, game_id):
+def init_games_db(game_id):
     conn = db.get_conn()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                insert into scores (player_id, game_id, max_score, rank_order)
-                values (%s, %s, %s, %s)
-                on conflict (player_id, game_id) do nothing;
-            """, (player_id, game_id,
+                insert into games (id, max_score, rank_order)
+                values (%s, %s, %s)
+                on conflict (id) do nothing;
+            """, (game_id,
                   app.config[game_id.upper()]['max_score'],
                   app.config[game_id.upper()]['rank_order'])
             )
@@ -306,45 +311,63 @@ def init_scores_db(player_id, game_id):
         db.close_conn()
 
 
+# to ensure player and game id is registered for any api calls
+# hscore is None b/c not init
+def init_scores_db(player_id, game_id):
+    conn = db.get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                insert into scores (player_id, game_id)
+                values (%s, %s)
+                on conflict (player_id, game_id) do nothing;
+            """, (player_id, game_id)
+            )
+        conn.commit()
+    finally:
+        db.close_conn()
+
+
 # =================================== API ===================================
-# UPSERT: '!play' cmd inits 1st reset time
-# successive calls shouldnt do anything as all updates handled by get_daily_rankings
-@app.route('/api/init_reset_time')
+# UPSERT: successive calls shouldnt do anything
 def init_reset_time():
     conn = db.get_conn()
-    with conn.cursor() as cur:
-        cur.execute("""
-            insert into reset_time (id, time)
-            values (1, now() + interval '10 seconds')
-            on conflict (id) do nothing;
-        """)
-        conn.commit()
-    return jsonify(None)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                insert into reset_time (id, time)
+                values (1, now() + interval '10 seconds')
+                on conflict (id) do nothing;
+            """)
+            conn.commit()
+        return jsonify(None)
+    finally:
+        db.close_conn()
 
 
-# bot has a background scheduler that pings every hour
-# once ping time >= reset_time, send non-None rankings
+# bot has a background scheduler that pings every hour for rankings
+# pinging method only accepts status 200
 @app.route('/api/rankings')
 def get_daily_rankings():
     conn = db.get_conn()
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("select time from reset_time;")
         row = cur.fetchone()
+        # reset time only exists if user clicked on login
+        # so return 404 Not Found so bot can ignore
         if row is None:
-            # to standardize output
-            return jsonify(rankings=None)
+            return jsonify(error='Reset time uninitialized'), 404
 
-        # if not yet reset time
+        # if not yet reset time, return 204 No Content
         if datetime.now(timezone.utc) < row['time']:
-            return jsonify(rankings=None)
+            return jsonify(None), 204
 
-        # else >= reset time
+        # else >= reset time so reset db after sending data
         cur.execute("""
             select
                 game_id,
                 player_id,
                 score,
-                max_score,
                 dense_rank() over (
                     partition by game_id
                     order by
@@ -352,31 +375,38 @@ def get_daily_rankings():
                             when rank_order = 'asc' then score
                             else -score
                         end
-                )
-            from scores;
+                ) as rank
+            from scores join games g
+            on game_id = g.id;
         """)
-        rows = cur.fetchall()
-
-        # if rows == [], no one's played a game today since
-        # reset time has passed and still empty
-        if not rows:
-            cur.execute("""
-                update reset_time
-                set streak = 0;
-            """)
+        # fetchall returns [] or [...], never None
+        rankings = cur.fetchall()
+        # if rows == [] after reset, not a single soul has played a game today
+        # so delete reset time & streak to be inited later
+        if not rankings:
+            cur.execute("truncate table reset_time;")
             conn.commit()
-            return jsonify(rankings=None)
+            return jsonify(None), 204
 
-        # else update reset + streak and return rankings
+        # else update, reset daily scores, and return rankings
         cur.execute("""
             update reset_time
             set time = now() + interval '10 seconds',
                 streak = streak + 1;
         """)
+        cur.execute("truncate table scores;")
         conn.commit()
+
+        cur.execute("select id as game_id, max_score from games;")
+        max_scores = cur.fetchall()
+        if not max_scores:
+            return jsonify(error='No games found'), 404
+
         cur.execute("select streak from reset_time;")
+        # by this point, streak should be init'd
         streak = cur.fetchone()['streak']
-        return jsonify(rankings=rows, streak=streak)
+
+        return jsonify(rankings=rankings, max_scores=max_scores, streak=streak)
 
 
 #=============================== MAIN ================================

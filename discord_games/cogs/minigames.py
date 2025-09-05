@@ -20,12 +20,6 @@ class Minigames(commands.Cog):
         """
         Command format: !play
         """
-        # use aiohttp instead of requests bc async lib
-        async with aiohttp.ClientSession() as sesh:
-            # remember to rm ssl=False once deployed
-            async with sesh.get(f"{self.API_URL}/init_reset_time", ssl=False) as r:
-                pass
-
         embed = discord.Embed(
                 title="🎮 Simon Says...",
                 description="Click the link below to start:",
@@ -37,12 +31,12 @@ class Minigames(commands.Cog):
                 inline=False
         )
         await ctx.reply(embed=embed)
-        #await ctx.message.remove()
+        #await ctx.message.remove()  need right perms
 
 
     async def announce_rankings(self):
         """
-        checks with server in the background to see if ready to announce rankings
+        pings server every hour to see if ready to announce rankings
         """
         await self.bot.wait_until_ready()
         channel = self.bot.get_channel(config.CHANNEL_ID)
@@ -52,33 +46,25 @@ class Minigames(commands.Cog):
         while not self.bot.is_closed():
             data = await self.fetch_rankings()
             # 'not' covers both None and []
-            if not data['rankings']:
+            if not data:
                 await asyncio.sleep(10)
                 continue
 
             rankings = data['rankings']
+            max_scores = data['max_scores']
             streak = data['streak']
-            await channel.send(f'{rankings}, {streak}')
-            '''await channel.send(f"""
-                        Minesweeper:
-                {scores[0]}: <@{username}>
 
-                        Simon Says:
-                {scores[1]}: <@{username}>
-            """)
-            '''
+            await channel.send(f'standings: {rankings}\nmax scores: {max_scores}\ndaily streak: {streak}')
             await asyncio.sleep(10)
 
 
-    # data contains 'rankings' and potentially 'streak'
+    # return: {rankings: {...}, max_scores: {game_id: str, max_score: int}, streak: int}
     async def fetch_rankings(self):
         async with aiohttp.ClientSession() as sesh:
             # remember to rm ssl=False once deployed
             async with sesh.get(f"{self.API_URL}/rankings", ssl=False) as r:
                 if r.status == 200:
-                    data = await r.json()
-                    return data
-        return None
+                    return await r.json()
 
 
 # set up the cog
