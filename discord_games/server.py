@@ -84,7 +84,8 @@ with app.app_context():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS reset_time (
                     id INT PRIMARY KEY DEFAULT 1,
-                    time TIMESTAMPTZ
+                    time TIMESTAMPTZ,
+                    streak INT DEFAULT 0
                 );
             """)
         conn.commit()
@@ -306,43 +307,38 @@ def init_scores_db(player_id, game_id):
 
 
 # =================================== API ===================================
-# UPSERT reset time
+# UPSERT: '!play' cmd inits 1st reset time
+# successive calls shouldnt do anything as all updates handled by get_daily_rankings
 @app.route('/api/init_reset_time')
 def init_reset_time():
     conn = db.get_conn()
     with conn.cursor() as cur:
         cur.execute("""
             insert into reset_time (id, time)
-            values (1, now() + interval '5 seconds')
+            values (1, now() + interval '10 seconds')
             on conflict (id) do nothing;
         """)
         conn.commit()
     return jsonify(None)
 
 
-# discord bot has a background scheduler that pings every hour
-# once ping time == reset_time, send response
+# bot has a background scheduler that pings every hour
+# once ping time >= reset_time, send non-None rankings
 @app.route('/api/rankings')
 def get_daily_rankings():
     conn = db.get_conn()
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("select time from reset_time;")
         row = cur.fetchone()
-
         if row is None:
             # to standardize output
             return jsonify(rankings=None)
+
         # if not yet reset time
         if datetime.now(timezone.utc) < row['time']:
             return jsonify(rankings=None)
 
-        # get rankings and update reset time
-        cur.execute("""
-            update reset_time
-            set time = now() + interval '5 seconds';
-        """)
-        conn.commit()
-        # SQL returns scores/game
+        # else >= reset time
         cur.execute("""
             select
                 game_id,
@@ -361,15 +357,26 @@ def get_daily_rankings():
         """)
         rows = cur.fetchall()
 
-        return jsonify(rankings=rows)
+        # if rows == [], no one's played a game today since
+        # reset time has passed and still empty
+        if not rows:
+            cur.execute("""
+                update reset_time
+                set streak = 0;
+            """)
+            conn.commit()
+            return jsonify(rankings=None)
 
-
-def get_max_scores():
-    return {
-            'minesweeper': config.MINESWEEPER['nmines'],
-            'simon': config.SIMON['max_seq'],
-            'num_guess': config.NUM_GUESS['max_turn']
-            }
+        # else update reset + streak and return rankings
+        cur.execute("""
+            update reset_time
+            set time = now() + interval '10 seconds',
+                streak = streak + 1;
+        """)
+        conn.commit()
+        cur.execute("select streak from reset_time;")
+        streak = cur.fetchone()['streak']
+        return jsonify(rankings=rows, streak=streak)
 
 
 #=============================== MAIN ================================

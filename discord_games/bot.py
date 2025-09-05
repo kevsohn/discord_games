@@ -23,7 +23,7 @@ class Simon(commands.Bot):
                 await self.load_extension(f'cogs.{filename[:-3]}')
 
     async def on_ready(self):
-        print(f"🤖 Logged in as {self.user} ({self.user.id})")
+        print(f"🤖 Logged in as {self.user}")
 
 
 async def main():

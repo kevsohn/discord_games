@@ -50,12 +50,15 @@ class Minigames(commands.Cog):
             channel = await self.bot.fetch_channel(config.CHANNEL_ID)
 
         while not self.bot.is_closed():
-            rankings = await self.fetch_rankings()
-            if rankings is None:
-                await asyncio.sleep(20)
+            data = await self.fetch_rankings()
+            # 'not' covers both None and []
+            if not data['rankings']:
+                await asyncio.sleep(10)
                 continue
 
-            await channel.send(f'{rankings}')
+            rankings = data['rankings']
+            streak = data['streak']
+            await channel.send(f'{rankings}, {streak}')
             '''await channel.send(f"""
                         Minesweeper:
                 {scores[0]}: <@{username}>
@@ -64,16 +67,17 @@ class Minigames(commands.Cog):
                 {scores[1]}: <@{username}>
             """)
             '''
-            await asyncio.sleep(20)
+            await asyncio.sleep(10)
 
 
+    # data contains 'rankings' and potentially 'streak'
     async def fetch_rankings(self):
         async with aiohttp.ClientSession() as sesh:
             # remember to rm ssl=False once deployed
             async with sesh.get(f"{self.API_URL}/rankings", ssl=False) as r:
                 if r.status == 200:
                     data = await r.json()
-                    return data['rankings']
+                    return data
         return None
 
 
