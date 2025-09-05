@@ -6,9 +6,10 @@ from urllib.parse import quote
 # extra
 from flask import Flask, session, request, render_template, redirect, url_for, jsonify
 from flask_session import Session
-from psycopg2.extras import DictCursor, RealDictCursor
-# mine
+from psycopg2.extras import RealDictCursor
+# custom
 import db
+import db_utils
 from games.simon import simon_bp
 from games.minesweeper import mines_bp
 from games.num_guess import guess_bp
@@ -37,9 +38,10 @@ with app.app_context():
     try:
         conn = db.get_conn()
         # DictCursor is faster that RealDictCursor but doesnt return a python dict
-        with conn.cursor(cursor_factory=DictCursor) as cur:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""
                 drop table if exists tokens;
+                drop table if exists highscores;
                 drop table if exists scores;
                 drop table if exists players;
                 drop table if exists games;
@@ -75,14 +77,21 @@ with app.app_context():
                     rank_order TEXT NOT NULL
                  );
             """)
+            # hscore: all-time highscore (IS NULL TO BE INIT'D)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS highscores (
+                    player_id BIGINT REFERENCES players(id) ON DELETE CASCADE,
+                    game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
+                    hscore INT,
+                    PRIMARY KEY (player_id, game_id)
+                 );
+            """)
             # score: daily score that resets every 24h
-            # hscore: all-time high score (IS NULL TO BE INIT'D)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS scores (
                     player_id BIGINT REFERENCES players(id) ON DELETE CASCADE,
                     game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
                     score INT DEFAULT 0,
-                    hscore INT,
                     PRIMARY KEY (player_id, game_id)
                  );
             """)
@@ -272,14 +281,15 @@ def home():
 def play(game_id):
     if game_id not in app.config['GAMES']:
         return 'Game not found', 404
+    db_utils.init_games_db(game_id)
+    db_utils.init_highscores_db(session['id'], game_id)
+    db_utils.init_scores_db(session['id'], game_id)
     init_scores(game_id)
     init_hscores(game_id)
-    init_games_db(game_id)
-    init_scores_db(session['id'], game_id)
     return render_template(f'{game_id}.html')
 
 
-# init 2d session vars since not auto
+# ensures 2d session vars are initialized since not automatic
 def init_scores(game_id):
     if 'score' not in session:
         session['score'] = {}
@@ -294,40 +304,6 @@ def init_hscores(game_id):
         session['hscore'][game_id] = {}
 
 
-def init_games_db(game_id):
-    conn = db.get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                insert into games (id, max_score, rank_order)
-                values (%s, %s, %s)
-                on conflict (id) do nothing;
-            """, (game_id,
-                  app.config[game_id.upper()]['max_score'],
-                  app.config[game_id.upper()]['rank_order'])
-            )
-        conn.commit()
-    finally:
-        db.close_conn()
-
-
-# to ensure player and game id is registered for any api calls
-# hscore is None b/c not init
-def init_scores_db(player_id, game_id):
-    conn = db.get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                insert into scores (player_id, game_id)
-                values (%s, %s)
-                on conflict (player_id, game_id) do nothing;
-            """, (player_id, game_id)
-            )
-        conn.commit()
-    finally:
-        db.close_conn()
-
-
 # =================================== API ===================================
 # UPSERT: successive calls shouldnt do anything
 def init_reset_time():
@@ -336,7 +312,7 @@ def init_reset_time():
         with conn.cursor() as cur:
             cur.execute("""
                 insert into reset_time (id, time)
-                values (1, now() + interval '10 seconds')
+                values (1, now() + interval '20 seconds')
                 on conflict (id) do nothing;
             """)
             conn.commit()
@@ -358,11 +334,12 @@ def get_daily_rankings():
         if row is None:
             return jsonify(error='Reset time uninitialized'), 404
 
-        # if not yet reset time, return 204 No Content
-        if datetime.now(timezone.utc) < row['time']:
+        # if before reset time, 204 No Content
+        reset_t = row['time']
+        if datetime.now(timezone.utc) <= reset_t:
             return jsonify(None), 204
 
-        # else >= reset time so reset db after sending data
+        # else do things
         cur.execute("""
             select
                 game_id,
@@ -381,29 +358,33 @@ def get_daily_rankings():
         """)
         # fetchall returns [] or [...], never None
         rankings = cur.fetchall()
-        # if rows == [] after reset, not a single soul has played a game today
-        # so delete reset time & streak to be inited later
+        # if rankings == [], not a single soul has played a game today
+        # b/c scores db gets deleted every 24h to be refilled
+        # so delete reset time to be init'd later
         if not rankings:
             cur.execute("truncate table reset_time;")
             conn.commit()
             return jsonify(None), 204
 
-        # else update, reset daily scores, and return rankings
+        # delete daily scores
+        cur.execute("truncate table scores;")
+
+      # update daily reset time & streak
         cur.execute("""
             update reset_time
-            set time = now() + interval '10 seconds',
+            set time = now() + interval '20 seconds',
                 streak = streak + 1;
         """)
-        cur.execute("truncate table scores;")
         conn.commit()
 
+        # other useful data for display
         cur.execute("select id as game_id, max_score from games;")
         max_scores = cur.fetchall()
         if not max_scores:
             return jsonify(error='No games found'), 404
 
-        cur.execute("select streak from reset_time;")
         # by this point, streak should be init'd
+        cur.execute("select streak from reset_time;")
         streak = cur.fetchone()['streak']
 
         return jsonify(rankings=rankings, max_scores=max_scores, streak=streak)
