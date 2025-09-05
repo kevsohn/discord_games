@@ -52,7 +52,7 @@ def init_board(mines, board, revealed):
             for c in range(max(j-1, 0), min(j+2, ndim)):
                 if board[r][c] != -1:
                     board[r][c] += 1
-    print_board(board, ndim)
+    #print_board(board, ndim)
 
 
 # score == nmines correctly flagged
