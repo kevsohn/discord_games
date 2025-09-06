@@ -26,12 +26,11 @@ class Minigames(commands.Cog):
                 color=0x00ff00
         )
         embed.add_field(
-                name="Game Link",
+                name='',
                 value=f"[Play Now]({config.BASE_URL}/login)",
                 inline=False
         )
         await ctx.reply(embed=embed)
-        #await ctx.message.remove()  need right perms
 
 
     async def announce_rankings(self):
@@ -47,15 +46,44 @@ class Minigames(commands.Cog):
             data = await self.fetch_rankings()
             # 'not' covers both None and []
             if not data:
-                await asyncio.sleep(10)
+                await asyncio.sleep(3600)
                 continue
 
+            # rankings already sorted
             rankings = data['rankings']
             max_scores = data['max_scores']
             streak = data['streak']
 
-            await channel.send(f'standings: {rankings}\nmax scores: {max_scores}\ndaily streak: {streak}')
-            await asyncio.sleep(10)
+            msg = f'**Your group is on an {streak} day streak!** :fire: '
+            msg += 'Here are yesterday\'s results:\n'
+            last_rank = 0
+            for r in rankings:
+                game = r['game']
+                max_score = max_scores[game]
+                msg += f'{game.upper()}:\n'
+                for player in r['players']:
+                    score = player['score']
+                    if last_rank == 0:
+                        msg += f':crown: {score}/{max_score}: '
+                        last_rank = 1
+
+                    if player['rank'] == last_rank:
+                        msg += f'<@{player['id']}> '
+                    else:
+                        msg += f'\n{score}/{max_score}: <@{player['id']}> '
+                        last_rank += 1
+                last_rank = 0
+                msg += '\n\n'
+
+            embed = discord.Embed(color=0x00ff00)
+            embed.add_field(
+                    name='',
+                    value=f"[Play Now]({config.BASE_URL}/login)",
+                    inline=False
+            )
+
+            await channel.send(msg, embed=embed)
+            await asyncio.sleep(3600)
 
 
     # return: {rankings: {...}, max_scores: {game_id: str, max_score: int}, streak: int}

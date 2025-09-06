@@ -312,7 +312,7 @@ def init_reset_time():
         with conn.cursor() as cur:
             cur.execute("""
                 insert into reset_time (id, time)
-                values (1, now() + interval '20 seconds')
+                values (1, now() + interval '2 hours')
                 on conflict (id) do nothing;
             """)
             conn.commit()
@@ -357,31 +357,43 @@ def get_daily_rankings():
             on game_id = g.id;
         """)
         # fetchall returns [] or [...], never None
-        rankings = cur.fetchall()
-        # if rankings == [], not a single soul has played a game today
+        rows = cur.fetchall()
+        # if rows == [], not a single soul has played a game today
         # b/c scores db gets deleted every 24h to be refilled
         # so delete reset time to be init'd later
-        if not rankings:
+        if not rows:
             cur.execute("truncate table reset_time;")
             conn.commit()
             return jsonify(None), 204
 
+        # else structure rankings in appropriate format
+        games = {}
+        for r in rows:
+            games.setdefault(r['game_id'], []).append({
+                'id': r['player_id'],
+                'score': r['score'],
+                'rank': r['rank'],
+            })
+        rankings = [{'game': gid, 'players': plist} for gid, plist in games.items()]
+
         # delete daily scores
         cur.execute("truncate table scores;")
-
-      # update daily reset time & streak
+        # update daily reset time & streak
         cur.execute("""
             update reset_time
-            set time = now() + interval '20 seconds',
+            set time = now() + interval '2 hours',
                 streak = streak + 1;
         """)
         conn.commit()
 
-        # other useful data for display
-        cur.execute("select id as game_id, max_score from games;")
-        max_scores = cur.fetchall()
-        if not max_scores:
+        # get max scores per game
+        cur.execute("select id, max_score from games;")
+        games = cur.fetchall()
+        if not games:
             return jsonify(error='No games found'), 404
+        max_scores = {}
+        for game in games:
+            max_scores[game['id']] = game['max_score']
 
         # by this point, streak should be init'd
         cur.execute("select streak from reset_time;")
