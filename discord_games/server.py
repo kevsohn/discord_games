@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timezone, timedelta
 import requests
 from urllib.parse import quote
+from functools import wraps
 # extra
 from flask import Flask, session, request, render_template, redirect, url_for, jsonify
 from flask_session import Session
@@ -110,10 +111,15 @@ with app.app_context():
 
 
 #================================= LOGIN/AUTH ====================================
+@app.route('/')
+def index():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 # redirects straight to discord OAuth2
 @app.route('/login')
 def login():
-    init_reset_time()
     # encoded cuz it just be like that
     encoded_url = quote(app.config['REDIR_URI'], safe="")
     # scope: whatever perms selected on the dev website
@@ -127,17 +133,27 @@ def login():
     )
 
 
+# decorator to enforce login so users cant just go to another link w/o auth
+def login_required(f):
+    @wraps(f)
+    def check_login(*args, **kwargs):
+        if 'id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return check_login
+
+
+# callback route for OAuth2
 # methods: allowed HTTP requests from client, default 'GET'
 # GET contains data in the url (i.e. ?param=data)
 # POST sends data through body
 # both can be seen if not using HTTPS
 @app.route('/auth', methods=['GET'])
 def auth():
-    session.clear()
     # could have more args so cant use /auth/<code>
     code = request.args.get('code')
     if not code:
-        return "Error: No code in given by Discord", 400
+        return "You look lost, friend", 400
 
     # gets an access token to get user deets
     r = exchange_code(code)
@@ -271,13 +287,17 @@ def get_access_token(id):
 
 #================================= GAME =================================
 # game selection menu
-@app.route('/')
+# get here after successful auth
+@app.route('/home')
+@login_required
 def home():
+    init_reset_time()
     return render_template('home.html')
 
 
 # <param> is required in the route to be captured
 @app.route('/play/<game_id>', methods=['GET'])
+@login_required
 def play(game_id):
     if game_id not in app.config['GAMES']:
         return 'Game not found', 404

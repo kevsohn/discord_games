@@ -27,7 +27,7 @@ class Minigames(commands.Cog):
         )
         embed.add_field(
                 name='',
-                value=f"[Play Now]({config.BASE_URL}/login)",
+                value=f"[Play Now]({config.BASE_URL})",
                 inline=False
         )
         await ctx.reply(embed=embed)
