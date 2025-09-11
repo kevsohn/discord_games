@@ -23,9 +23,6 @@
     </div>
 
     <script>
-        // game vars
-        let in_progress = false
-
         // timer vars
         const max_time = 999 // secs
         let elapsed_t = 0
@@ -36,27 +33,27 @@
         async function init() {
             const r = await fetch('/minesweeper/init', {method: 'GET'})
             const data = await r.json()
-            console.log(data.ndim)
+            
             await create_grid(data.ndim)
+            await load_board_state(
+                data.board, 
+                data.revealed, 
+                data.flagged, 
+                data.mines, 
+                data.finished
+            )
             
             document.getElementById('nflags').textContent = `${data.nflags}`
             document.getElementById('reset').textContent = '🙂'
-            document.getElementById('score').textContent = '0'
+            document.getElementById('timer').textContent = String(0).padStart(3, '0')
+            document.getElementById('score').textContent = `${data.score}`
             document.getElementById('hscore').textContent = `${data.hscore}`
 
-            reset_timer()
-            in_progress = false
-        }
-
-        // just tells server to init board w/o mine in start tile
-        async function start(i, j) {
-            await fetch('/minesweeper/start', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({choice: [i,j]})
-            })
-            start_timer()
-            in_progress = true
+            // if has been played for the day, in_progress remains true
+            // so clicks have no response
+            if (!data.played) {
+                reset_timer()
+            }
         }
 
 
@@ -91,17 +88,27 @@
                 }
             }
         }
+
+
+        function load_board_state(board, revealed, flagged, mines, finished) {
+            document.querySelectorAll('.tile').forEach(tile => {
+                const r = Number(tile.dataset.row)
+                const c = Number(tile.dataset.col)
+                
+                if (revealed[r][c])
+                    reveal_tile(tile, board[r][c])
+                else if (flagged[r][c])
+                    tile.classList.toggle('flag')
+            })
+
+            if (finished)
+                reveal_mines(mines)
+        }
         
 
         async function verify(tile) {
             const i = Number(tile.dataset.row)
             const j = Number(tile.dataset.col)
-            
-            // if 1st tile to be clicked, start
-            // start tile is always safe
-            if (!in_progress)
-                await start(i, j)
-
             const r = await fetch('/minesweeper/verify', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -109,14 +116,22 @@
             })
             const data = await r.json()
             
+            // if 1st tile to be clicked, start
+            // start tile is always safe
+            if (data.status == 'started') {
+                start_timer()
+                reveal_tiles(data.revealed)
+                return
+            }
+
             // do nothing if tile is flagged or game finished
-            if (data.status == 'flagged' || data.status == 'finished') 
+            if (data.status == 'flagged' || data.status == 'finished')
                 return
             if (data.status == 'continue') {
                 reveal_tiles(data.revealed)
                 return
             }
-            // else, game won or over
+            // else, game finished
             stop_timer()
             update(data.score) 
             // if won, reveal tiles as usual
@@ -131,17 +146,23 @@
         }
         
 
-        // tiles input already excludes revealed or flagged
+        // tiles = {'r': int, 'c': int, 'num': int}
+        // input already excludes revealed or flagged
         function reveal_tiles(tiles) {
             tiles.forEach(tile => {
-                const e = document.querySelector(`.tile[data-row="${tile.r}"][data-col="${tile.c}"]`)
-                e.classList.add('reveal')
-                // only show num if non-empty tile
-                e.textContent = tile.num === 0 ? '' : tile.num
-                // assign preset colour to num
-                if (tile.num > 0) 
-                    e.classList.add('num'+tile.num)
+                const tile_e = document.querySelector(`.tile[data-row="${tile.r}"][data-col="${tile.c}"]`)
+                reveal_tile(tile_e, tile.num)
             })
+        }
+        
+
+        function reveal_tile(tile_e, num) {
+            tile_e.classList.add('reveal')
+            // only show num if non-empty tile
+            tile_e.textContent = num === 0 ? '' : num
+            // assign preset colour to num
+            if (num > 0) 
+                tile_e.classList.add('num'+num)
         }
 
 
@@ -219,7 +240,7 @@
         // ------------------------ init -------------------------------
         window.onload = async function() {
             await init()
-            document.getElementById('reset').addEventListener('click', init)
+            //document.getElementById('reset').addEventListener('click', init)
         }
 
     </script>

@@ -113,7 +113,6 @@ with app.app_context():
 #================================= LOGIN/AUTH ====================================
 @app.route('/')
 def index():
-    session.clear()
     return redirect(url_for('login'))
 
 
@@ -291,6 +290,8 @@ def get_access_token(id):
 @app.route('/home')
 @login_required
 def home():
+    # 1st person to get here sets 1st reset time
+    # after, does nothing
     init_reset_time()
     return render_template('home.html')
 
@@ -301,11 +302,20 @@ def home():
 def play(game_id):
     if game_id not in app.config['GAMES']:
         return 'Game not found', 404
+
+    # inits session vars if not exists
+    init_scores(game_id)
+    init_hscores(game_id)
+    init_played(game_id)
+
+    # resets played 4 today if scores db got truncated
+    if db_utils.get_score(session['id'], game_id) is None:
+        session['played'][game_id] = False
+
+    # init db or refill if truncated
     db_utils.init_games_db(game_id)
     db_utils.init_highscores_db(session['id'], game_id)
     db_utils.init_scores_db(session['id'], game_id)
-    init_scores(game_id)
-    init_hscores(game_id)
     return render_template(f'{game_id}.html')
 
 
@@ -324,6 +334,13 @@ def init_hscores(game_id):
         session['hscore'][game_id] = {}
 
 
+def init_played(game_id):
+    if 'played' not in session:
+        session['played'] = {}
+    if game_id not in session['played']:
+        session['played'][game_id] = False
+
+
 # =================================== API ===================================
 # UPSERT: successive calls shouldnt do anything
 def init_reset_time():
@@ -332,7 +349,7 @@ def init_reset_time():
         with conn.cursor() as cur:
             cur.execute("""
                 insert into reset_time (id, time)
-                values (1, now() + interval '2 hours')
+                values (1, now() + interval '30 seconds')
                 on conflict (id) do nothing;
             """)
             conn.commit()
@@ -345,21 +362,17 @@ def init_reset_time():
 # pinging method only accepts status 200
 @app.route('/api/rankings')
 def get_daily_rankings():
+    reset_t = db_utils.get_reset_time()
+    if reset_t is None:
+        return jsonify(error='Reset time uninitialized'), 404
+
+    # if before reset time, 204 No Content
+    if datetime.now(timezone.utc) <= reset_t:
+        return jsonify(None), 204
+
+    # else, return rankings
     conn = db.get_conn()
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("select time from reset_time;")
-        row = cur.fetchone()
-        # reset time only exists if user clicked on login
-        # so return 404 Not Found so bot can ignore
-        if row is None:
-            return jsonify(error='Reset time uninitialized'), 404
-
-        # if before reset time, 204 No Content
-        reset_t = row['time']
-        if datetime.now(timezone.utc) <= reset_t:
-            return jsonify(None), 204
-
-        # else do things
         cur.execute("""
             select
                 game_id,
@@ -386,7 +399,19 @@ def get_daily_rankings():
             conn.commit()
             return jsonify(None), 204
 
-        # else structure rankings in appropriate format
+        # else get requested info and reset scores
+        # delete daily scores
+        cur.execute("truncate table scores;")
+
+        # update daily reset time & streak
+        cur.execute("""
+            update reset_time
+            set time = now() + interval '30 seconds',
+                streak = streak + 1;
+        """)
+        conn.commit()
+
+        # structure rankings in appropriate format
         games = {}
         for r in rows:
             games.setdefault(r['game_id'], []).append({
@@ -395,16 +420,6 @@ def get_daily_rankings():
                 'rank': r['rank'],
             })
         rankings = [{'game': gid, 'players': plist} for gid, plist in games.items()]
-
-        # delete daily scores
-        cur.execute("truncate table scores;")
-        # update daily reset time & streak
-        cur.execute("""
-            update reset_time
-            set time = now() + interval '2 hours',
-                streak = streak + 1;
-        """)
-        conn.commit()
 
         # get max scores per game
         cur.execute("select id, max_score from games;")

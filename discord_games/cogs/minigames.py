@@ -46,7 +46,8 @@ class Minigames(commands.Cog):
             data = await self.fetch_rankings()
             # 'not' covers both None and []
             if not data:
-                await asyncio.sleep(3600)
+                #await asyncio.sleep(3600)
+                await asyncio.sleep(30)
                 continue
 
             # rankings already sorted
@@ -78,12 +79,13 @@ class Minigames(commands.Cog):
             embed = discord.Embed(color=0x00ff00)
             embed.add_field(
                     name='',
-                    value=f"[Play Now]({config.BASE_URL}/login)",
+                    value=f"[Play Now]({config.BASE_URL})",
                     inline=False
             )
 
             await channel.send(msg, embed=embed)
-            await asyncio.sleep(3600)
+            #await asyncio.sleep(3600)
+            await asyncio.sleep(30)
 
 
     # return: {rankings: {...}, max_scores: {game_id: str, max_score: int}, streak: int}

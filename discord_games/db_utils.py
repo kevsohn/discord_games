@@ -85,6 +85,23 @@ def update_hscore(hscore, player_id, game_id):
         db.close_conn()
 
 
+# get daily score (default 0 already)
+def get_score(player_id, game_id):
+    conn = db.get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                select score from scores
+                where player_id = %s and game_id = %s;
+            """, (player_id, game_id))
+            row = cur.fetchone()
+            if row is None:
+                return
+            return row['score']
+    finally:
+        db.close_conn()
+
+
 # update daily score
 def update_score(score, player_id, game_id):
     conn = db.get_conn()
@@ -99,3 +116,15 @@ def update_score(score, player_id, game_id):
     finally:
         db.close_conn()
 
+
+# reset time only exists if user successfully auth'd
+def get_reset_time():
+    conn = db.get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("select time from reset_time;")
+            row = cur.fetchone()
+            if row is not None:
+                return row['time']
+    finally:
+        db.close_conn()
