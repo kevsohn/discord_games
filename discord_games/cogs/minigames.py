@@ -46,8 +46,7 @@ class Minigames(commands.Cog):
             data = await self.fetch_rankings()
             # 'not' covers both None and []
             if not data:
-                #await asyncio.sleep(3600)
-                await asyncio.sleep(30)
+                await asyncio.sleep(3600)
                 continue
 
             # rankings already sorted
@@ -84,15 +83,13 @@ class Minigames(commands.Cog):
             )
 
             await channel.send(msg, embed=embed)
-            #await asyncio.sleep(3600)
-            await asyncio.sleep(30)
+            await asyncio.sleep(3600)
 
 
     # return: {rankings: {...}, max_scores: {game_id: str, max_score: int}, streak: int}
     async def fetch_rankings(self):
         async with aiohttp.ClientSession() as sesh:
-            # remember to rm ssl=False once deployed
-            async with sesh.get(f"{self.API_URL}/rankings", ssl=False) as r:
+            async with sesh.get(f"{self.API_URL}/rankings") as r:
                 if r.status == 200:
                     return await r.json()
 

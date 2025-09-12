@@ -320,31 +320,31 @@ def play(game_id):
     return render_template(f'{game_id}.html')
 
 
-def init_scores(game_id): 
-    if 'score' not in session: 
-        session['score'] = {} 
-    if game_id not in session['score']: 
-        session['score'][game_id] = 0 
+def init_scores(game_id):
+    if 'score' not in session:
+        session['score'] = {}
+    if game_id not in session['score']:
+        session['score'][game_id] = 0
 
 
-def init_hscores(game_id): 
-    if 'hscore' not in session: 
-        session['hscore'] = {} 
-    if game_id not in session['hscore']: 
-        session['hscore'][game_id] = {} 
+def init_hscores(game_id):
+    if 'hscore' not in session:
+        session['hscore'] = {}
+    if game_id not in session['hscore']:
+        session['hscore'][game_id] = {}
 
 
-def init_played(game_id): 
-    if 'played' not in session: 
-        session['played'] = {} 
-    if game_id not in session['played']: 
-        session['played'][game_id] = False 
+def init_played(game_id):
+    if 'played' not in session:
+        session['played'] = {}
+    if game_id not in session['played']:
+        session['played'][game_id] = False
 
 
-def init_finished(game_id): 
-    if 'finished' not in session: 
-        session['finished'] = {} 
-    if game_id not in session['finished']: 
+def init_finished(game_id):
+    if 'finished' not in session:
+        session['finished'] = {}
+    if game_id not in session['finished']:
         session['finished'][game_id] = False
 
 
@@ -356,7 +356,7 @@ def init_reset_time():
         with conn.cursor() as cur:
             cur.execute("""
                 insert into reset_time (id, time)
-                values (1, now() + interval '30 seconds')
+                values (1, now() + interval '24 hours')
                 on conflict (id) do nothing;
             """)
             conn.commit()
@@ -413,7 +413,7 @@ def get_daily_rankings():
         # update daily reset time & streak
         cur.execute("""
             update reset_time
-            set time = now() + interval '30 seconds',
+            set time = now() + interval '24 hours',
                 streak = streak + 1;
         """)
         conn.commit()
