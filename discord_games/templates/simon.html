@@ -31,19 +31,44 @@
         const rate_lim = 50 // ms
         let prev_click_time = 0 // ms
 
+
         async function init() {
             // urls on client-side need to have Blueprint prefix included
             const r = await fetch('/simon/init', {method: 'GET'})
             const data = await r.json()
-            document.getElementById('status').textContent = 'Click "Start" to play!'
-            document.getElementById('score').textContent = '0'
+            
+            if (!data.played) {
+                disable_squares()
+                document.getElementById('start').disabled = false
+                document.getElementById('status').textContent = 'Click "Start" to play!'
+            }
+            else {
+                document.getElementById('start').disabled = true
+                if (data.finished) {
+                    disable_squares()
+                    document.getElementById('status').textContent = 'Game Over...'
+                }
+                else { 
+                    if (data.user_turn) {
+                        enable_squares()
+                        document.getElementById('status').textContent = 'Your turn!'
+                    }
+                    else
+                        await show_sequence()
+                }
+            }
+
+            document.getElementById('score').textContent = `${data.score}`
             document.getElementById('hscore').textContent = `${data.hscore}`
         }
 
+
         async function start() {
-            await init()
+            fetch('/simon/start', {method: 'POST'})
+            document.getElementById('start').disabled = true
             await show_sequence()
         }
+
 
         async function show_sequence() {
             disable_squares()
@@ -59,6 +84,7 @@
             document.getElementById('status').textContent = 'Your turn!' 
             enable_squares()
         }
+
 
         // acts like a webhook by sending data to server at every event
         // attacker could modify data but it doesn't really matter bc
@@ -79,7 +105,7 @@
 
             if (data.status == 'game_over') {
                 disable_squares()
-                document.getElementById('status').textContent = 'Game Over'
+                document.getElementById('status').textContent = 'Game Over...'
                 document.getElementById('score').textContent = `${data.score}`
                 document.getElementById('hscore').textContent = `${data.hscore}`
                 return
@@ -91,6 +117,7 @@
             }
         }
 
+
         // ------------------ helpers --------------------
         async function flash(colour) {
             const square = document.getElementById(colour)
@@ -99,17 +126,19 @@
             square.classList.remove('flash')
         }
 
+
         function enable_squares() {
             squares.forEach(colour => colour.classList.add('on'))
         }
+
 
         function disable_squares() {
             squares.forEach(colour => colour.classList.remove('on'))
         }
 
+
         // ------------------  main ----------------------
         window.onload = async function() {
-            disable_squares()
             await init()
         }
         

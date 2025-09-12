@@ -25,7 +25,7 @@ def reset_state():
     session['flagged'] = [[False for _ in range(ndim)] for _ in range(ndim)]
     session['mines'] = []
     session['nflags'] = nmines
-    session['finished'] = False
+    session['finished'][gid] = False
 
 
 # generate mine coords excluding start tile
@@ -46,13 +46,6 @@ def init_board(mines, board):
             for c in range(max(j-1, 0), min(j+2, ndim)):
                 if board[r][c] != -1:
                     board[r][c] += 1
-
-
-def print_board(board, ndim):
-    for i in range(ndim):
-        for j in range(ndim):
-            print(board[i][j], end="  ")
-        print('\n')
 
 
 # score == nmines correctly flagged
@@ -86,7 +79,7 @@ def flood_reveal(i, j, board, revealed, flagged):
             for c in range(max(j-1, 0), min(j+2, ndim)):
                 if r == i and c == j:
                     continue
-                if flagged[i][j]:
+                if flagged[r][c]:
                     continue
                 flood_reveal(r, c, board, revealed, flagged)
 
@@ -114,19 +107,21 @@ def init():
     # else finished stays True so verify() does nothing
     if not session['played'][gid]:
         reset_state()
+
     # else load prev board state
     session['score'][gid] = db_utils.get_score(session['id'], gid)
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
     return jsonify(ndim=ndim,
+                   nmines=nmines,
                    board=session['board'],
                    revealed=session['revealed'],
                    flagged=session['flagged'],
                    mines=session['mines'],
                    nflags=session['nflags'],
-                   finished=session['finished'],
                    score=session['score'][gid],
                    hscore=session['hscore'][gid],
-                   played=session['played'][gid])
+                   played=session['played'][gid],
+                   finished=session['finished'][gid])
 
 
 '''
@@ -147,7 +142,7 @@ Called after every tile click.
 @mines_bp.route('/verify', methods=['POST'])
 def verify():
     # clicks do nothing once game done
-    if session['finished']:
+    if session['finished'][gid]:
         return jsonify(status='finished')
 
     choice = request.json.get("choice")
@@ -176,7 +171,7 @@ def verify():
     # clicked mine, game over
     mines = session['mines']
     if (i,j) in mines:
-        session['finished'] = True
+        session['finished'][gid] = True
         score = tally_score(mines, flagged)
         return jsonify(status='game_over', mines=mines, score=score)
 
@@ -185,7 +180,7 @@ def verify():
 
     # check win after revealing
     if won(board, revealed):
-        session['finished'] = True
+        session['finished'][gid] = True
         return jsonify(status='won', revealed=revealed_tiles, score=nmines)
 
     return jsonify(status='continue', revealed=revealed_tiles)
@@ -194,7 +189,7 @@ def verify():
 @mines_bp.route('/flag', methods=['POST'])
 def toggle_flag():
     # stop responding after gg
-    if session['finished']:
+    if session['finished'][gid]:
         return jsonify(status='finished')
 
     choice = request.json.get("choice")

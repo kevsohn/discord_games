@@ -23,6 +23,8 @@
     </div>
 
     <script>
+        // JS globals reset on page load!
+
         // timer vars
         const max_time = 999 // secs
         let elapsed_t = 0
@@ -35,25 +37,28 @@
             const data = await r.json()
             
             await create_grid(data.ndim)
-            await load_board_state(
-                data.board, 
-                data.revealed, 
-                data.flagged, 
-                data.mines, 
-                data.finished
-            )
+            await load_board_state(data.board, data.revealed, data.flagged)
             
-            document.getElementById('nflags').textContent = `${data.nflags}`
-            document.getElementById('reset').textContent = '🙂'
-            document.getElementById('timer').textContent = String(0).padStart(3, '0')
-            document.getElementById('score').textContent = `${data.score}`
-            document.getElementById('hscore').textContent = `${data.hscore}`
+            if (data.finished) {
+                reveal_mines(data.mines)
+                if (data.score == data.nmines)
+                    document.getElementById('reset').textContent = '😎'
+                else
+                    document.getElementById('reset').textContent = '😵'   
+            }
+            else {
+                start_timer()
+                document.getElementById('reset').textContent = '🙂'
+            }
 
-            // if has been played for the day, in_progress remains true
-            // so clicks have no response
             if (!data.played) {
                 reset_timer()
             }
+            
+            document.getElementById('nflags').textContent = `${data.nflags}`
+            document.getElementById('timer').textContent = String(elapsed_t).padStart(3, '0')
+            document.getElementById('score').textContent = `${data.score}`
+            document.getElementById('hscore').textContent = `${data.hscore}`
         }
 
 
@@ -90,7 +95,7 @@
         }
 
 
-        function load_board_state(board, revealed, flagged, mines, finished) {
+        function load_board_state(board, revealed, flagged) {
             document.querySelectorAll('.tile').forEach(tile => {
                 const r = Number(tile.dataset.row)
                 const c = Number(tile.dataset.col)
@@ -100,9 +105,6 @@
                 else if (flagged[r][c])
                     tile.classList.toggle('flag')
             })
-
-            if (finished)
-                reveal_mines(mines)
         }
         
 
@@ -170,10 +172,10 @@
             mines.forEach(mine => {
                 const e = document.querySelector(`.tile[data-row="${mine[0]}"][data-col="${mine[1]}"]`)
                 // if already flagged, dont override w/ mine
-                if (!e.classList.contains('flag')) {
+                if (!e.classList.contains('flag'))
                     e.textContent = '💣'
-                    e.classList.add('reveal')
-                }
+                // reveal correct flags & all mines
+                e.classList.add('reveal')
             })
         }
 
@@ -240,7 +242,6 @@
         // ------------------------ init -------------------------------
         window.onload = async function() {
             await init()
-            //document.getElementById('reset').addEventListener('click', init)
         }
 
     </script>

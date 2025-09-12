@@ -303,10 +303,11 @@ def play(game_id):
     if game_id not in app.config['GAMES']:
         return 'Game not found', 404
 
-    # inits session vars if not exists
+    # init 2d session vars if not def
     init_scores(game_id)
     init_hscores(game_id)
     init_played(game_id)
+    init_finished(game_id)
 
     # resets played 4 today if scores db got truncated
     if db_utils.get_score(session['id'], game_id) is None:
@@ -319,26 +320,32 @@ def play(game_id):
     return render_template(f'{game_id}.html')
 
 
-# ensures 2d session vars are initialized since not automatic
-def init_scores(game_id):
-    if 'score' not in session:
-        session['score'] = {}
-    if game_id not in session['score']:
-        session['score'][game_id] = {}
+def init_scores(game_id): 
+    if 'score' not in session: 
+        session['score'] = {} 
+    if game_id not in session['score']: 
+        session['score'][game_id] = 0 
 
 
-def init_hscores(game_id):
-    if 'hscore' not in session:
-        session['hscore'] = {}
-    if game_id not in session['hscore']:
-        session['hscore'][game_id] = {}
+def init_hscores(game_id): 
+    if 'hscore' not in session: 
+        session['hscore'] = {} 
+    if game_id not in session['hscore']: 
+        session['hscore'][game_id] = {} 
 
 
-def init_played(game_id):
-    if 'played' not in session:
-        session['played'] = {}
-    if game_id not in session['played']:
-        session['played'][game_id] = False
+def init_played(game_id): 
+    if 'played' not in session: 
+        session['played'] = {} 
+    if game_id not in session['played']: 
+        session['played'][game_id] = False 
+
+
+def init_finished(game_id): 
+    if 'finished' not in session: 
+        session['finished'] = {} 
+    if game_id not in session['finished']: 
+        session['finished'][game_id] = False
 
 
 # =================================== API ===================================

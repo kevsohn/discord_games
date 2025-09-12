@@ -23,8 +23,8 @@ colours = ["r", "g", "b", "o"]
 def reset_state():
     session['sequence'] = [choice(colours) for _ in range(max_seq)]
     session['turn_num'] = 0
-    session['score'][gid] = 0
     session['user_turn'] = False
+    session['finished'][gid] = False
 
 
 # ---------------- main -------------------
@@ -34,9 +34,22 @@ def reset_state():
 # not that POST is infallable since all the info is still visible to men-in-the-middle
 @simon_bp.route('/init', methods=['GET'])
 def init():
-    reset_state()
+    if not session['played'][gid]:
+        reset_state()
+
+    session['score'][gid] = db_utils.get_score(session['id'], gid)
     session['hscore'][gid] = db_utils.get_hscore(session['id'], gid)
-    return jsonify(hscore=session['hscore'][gid])
+    return jsonify(user_turn=session['user_turn'],
+                   score=session['score'][gid],
+                   hscore=session['hscore'][gid],
+                   played=session['played'][gid],
+                   finished=session['finished'][gid])
+
+
+@simon_bp.route('/start', methods=['POST'])
+def start():
+    session['played'][gid] = True
+    return jsonify(None)
 
 
 # the current score gives the max turn num
@@ -66,6 +79,7 @@ def verify_choice():
     # game over
     if colour != session['sequence'][turn_num]:
         session['user_turn'] = False
+        session['finished'][gid] = True
         hscore = session['hscore'][gid]
         # only update hscore if ending score > hscore
         if score > hscore:
